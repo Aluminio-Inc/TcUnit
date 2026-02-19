@@ -13,7 +13,7 @@
     - Message (string)
     - Test instance path (string)
 *)
-FUNCTION_BLOCK FB_AssertArrayResultStatic
+FUNCTION_BLOCK FB_AssertArrayResultStatic EXTENDS FB_BaseStatic
 VAR
     // The total number of instances of each of the "AssertArrayResults"
     AssertArrayResults : ARRAY[1..GVL_Param_TcUnit.MaxNumberOfAssertsForEachTestSuite] OF ST_AssertArrayResult;
@@ -68,6 +68,9 @@ ELSE
 		GVL_TcUnit.AdsMessageQueue.WriteLog(MsgCtrlMask := ADSLOG_MSGTYPE_ERROR,
 											MsgFmtStr := sErrorString,
 											StrArg := '');
+		TraceWithSeverity(
+			Message := sErrorString,
+			Severity := Global.TcEventSeverity.Error);
 		AssertResultOverflow := TRUE;
 	END_IF
 END_IF]]></ST>

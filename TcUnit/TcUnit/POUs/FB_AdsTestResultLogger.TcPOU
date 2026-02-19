@@ -6,7 +6,7 @@
     provided by the Tc2_System library. This sends the result using ADS, which is consumed by the "Error List"
     of Visual Studio (which can print Errors, Warnings and Messages).
 *)
-FUNCTION_BLOCK FB_AdsTestResultLogger IMPLEMENTS I_TestResultLogger
+FUNCTION_BLOCK FB_AdsTestResultLogger EXTENDS FB_BaseStatic IMPLEMENTS I_TestResultLogger
 VAR
     TestResults : I_TestResults;
 
@@ -146,6 +146,12 @@ IF PrintingTestSuiteResultNumber <= GVL_TcUnit.NumberOfInitializedTestSuites AND
                                                                                                                                       STR2 := CONCAT(STR1 := '$' are more than is defined in parameter $'GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite$' (',
                                                                                                                                                                   STR2 := CONCAT(STR1 := UINT_TO_STRING(GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite),
                                                                                                                                                                                               STR2 := '). Please increase this parameter.'))))));
+            TraceWithSeverity(
+                Message := CONCAT('Test count overflow in suite: ',
+                           CONCAT(TcUnitTestResults.TestSuiteResults[PrintingTestSuiteResultNumber].Name,
+                           CONCAT(' (', CONCAT(UINT_TO_STRING(TcUnitTestResults.TestSuiteResults[PrintingTestSuiteResultNumber].NumberOfTests),
+                           CONCAT(' > ', CONCAT(UINT_TO_STRING(GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite), ')')))))),
+                Severity := Global.TcEventSeverity.Error);
         END_IF
 
         IF PrintingTestSuiteResultNumber = GVL_TcUnit.NumberOfInitializedTestSuites THEN
@@ -181,6 +187,15 @@ IF (GVL_TcUnit.NumberOfInitializedTestSuites = 0 OR PrintingTestSuiteResultNumbe
     GVL_TcUnit.AdsMessageQueue.WriteLog(MsgCtrlMask := ADSLOG_MSGTYPE_ERROR,
                                         MsgFmtStr := '%s',
                                         StrArg := '| ======================================');
+
+    TraceWithSeverity(
+        Message := CONCAT('TESTS FINISHED - ',
+                   CONCAT(UINT_TO_STRING(TcUnitTestResults.NumberOfTestSuites),
+                   CONCAT(' suites, ',
+                   CONCAT(UINT_TO_STRING(TcUnitTestResults.NumberOfSuccessfulTestCases),
+                   CONCAT(' passed, ',
+                   CONCAT(UINT_TO_STRING(TcUnitTestResults.NumberOfFailedTestCases), ' failed')))))),
+        Severity := Global.TcEventSeverity.Info);
     PrintedFinalTestResults := TRUE;
 END_IF]]></ST>
       </Implementation>

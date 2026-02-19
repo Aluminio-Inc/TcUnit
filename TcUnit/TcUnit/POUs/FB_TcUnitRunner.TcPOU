@@ -2,7 +2,7 @@
 <TcPlcObject Version="1.1.0.1">
   <POU Name="FB_TcUnitRunner" Id="{857e16d6-a26c-468a-935e-aa7317c263b9}" SpecialFunc="None">
     <Declaration><![CDATA[// This function block is responsible for holding track of the tests and executing them.
-FUNCTION_BLOCK FB_TcUnitRunner
+FUNCTION_BLOCK FB_TcUnitRunner EXTENDS FB_BaseStatic
 VAR
     // Indication of whether all test suites have reported that they are finished
     AllTestSuitesFinished : BOOL := FALSE;
@@ -32,7 +32,10 @@ END_VAR]]></Declaration>
    in the test suites *)
 METHOD INTERNAL AbortRunningTestSuiteTests]]></Declaration>
       <Implementation>
-        <ST><![CDATA[AbortRunningTestSuites := TRUE;]]></ST>
+        <ST><![CDATA[AbortRunningTestSuites := TRUE;
+TraceWithSeverity(
+    Message := 'TEST RUN ABORTED',
+    Severity := Global.TcEventSeverity.Warning);]]></ST>
       </Implementation>
     </Method>
     <Method Name="RunTestSuiteTests" Id="{d333e6c4-a1da-4b5b-91b3-4b4808e6c299}">
@@ -50,6 +53,10 @@ END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[IF GVL_TcUnit.StartedAt = 0 THEN
     GVL_TcUnit.StartedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
+    TraceWithSeverity(
+        Message := CONCAT('TEST RUN STARTED - ',
+                   CONCAT(UINT_TO_STRING(GVL_TcUnit.NumberOfInitializedTestSuites), ' suite(s), parallel execution')),
+        Severity := Global.TcEventSeverity.Info);
 END_IF
 
 // Run TcUnit test suites
@@ -80,6 +87,14 @@ IF NOT AllTestSuitesFinished THEN
             AllTestSuitesFinished := TRUE;
         END_IF
     END_IF
+END_IF
+
+AllTestSuitesFinishedTrigger(CLK := AllTestSuitesFinished);
+IF AllTestSuitesFinishedTrigger.Q THEN
+    TraceWithSeverity(
+        Message := CONCAT('TEST RUN COMPLETED - ',
+                   CONCAT(UINT_TO_STRING(GVL_TcUnit.NumberOfInitializedTestSuites), ' suite(s) finished')),
+        Severity := Global.TcEventSeverity.Info);
 END_IF
 
 // Store test suite results continuously
@@ -118,6 +133,10 @@ END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[IF GVL_TcUnit.StartedAt = 0 THEN
     GVL_TcUnit.StartedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
+    TraceWithSeverity(
+        Message := CONCAT('TEST RUN STARTED - ',
+                   CONCAT(UINT_TO_STRING(GVL_TcUnit.NumberOfInitializedTestSuites), ' suite(s), sequential execution')),
+        Severity := Global.TcEventSeverity.Info);
 END_IF
 
 TimerBetweenExecutionOfTestSuites(PT := TimeBetweenTestSuitesExecution);
@@ -154,6 +173,14 @@ IF NOT AllTestSuitesFinished THEN
             AllTestSuitesFinished := TRUE;
         END_IF
     END_IF
+END_IF
+
+AllTestSuitesFinishedTrigger(CLK := AllTestSuitesFinished);
+IF AllTestSuitesFinishedTrigger.Q THEN
+    TraceWithSeverity(
+        Message := CONCAT('TEST RUN COMPLETED - ',
+                   CONCAT(UINT_TO_STRING(GVL_TcUnit.NumberOfInitializedTestSuites), ' suite(s) finished')),
+        Severity := Global.TcEventSeverity.Info);
 END_IF
 
 // Store test suite results continuously

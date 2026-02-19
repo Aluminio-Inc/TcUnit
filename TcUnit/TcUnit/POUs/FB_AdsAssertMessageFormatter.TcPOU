@@ -6,7 +6,7 @@
     ADSLOGSTR functionality provided by the Tc2_System library. This sends the result using ADS, which
     is consumed by the error list of Visual Studio.
 *)
-FUNCTION_BLOCK FB_AdsAssertMessageFormatter IMPLEMENTS I_AssertMessageFormatter]]></Declaration>
+FUNCTION_BLOCK FB_AdsAssertMessageFormatter EXTENDS Base.FB_BaseStatic IMPLEMENTS I_AssertMessageFormatter]]></Declaration>
     <Implementation>
       <ST><![CDATA[]]></ST>
     </Implementation>
@@ -25,6 +25,7 @@ VAR
     ReturnValue : DINT;
     TestInstancePathProcessed : T_MaxString;
     MessageProcessed : T_MaxString;
+    TraceMessage : T_MaxString;
 END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[TestInstancePathCleaned := F_RemoveInstancePathAndProjectNameFromTestInstancePath(TestInstancePath);
@@ -53,7 +54,18 @@ AdjustAssertFailureMessageToMax253CharLength(TestInstancePath := TestInstancePat
 
 GVL_TcUnit.AdsMessageQueue.WriteLog(MsgCtrlMask := ADSLOG_MSGTYPE_ERROR,
                                     MsgFmtStr := TestInstancePathProcessed,
-                                    StrArg := MessageProcessed);]]></ST>
+                                    StrArg := MessageProcessed);
+
+TraceMessage := CONCAT(STR1 := 'ASSERT FAIL $'', STR2 := TestInstancePathCleaned);
+TraceMessage := CONCAT(STR1 := TraceMessage, STR2 := '$', EXP: ');
+TraceMessage := CONCAT(STR1 := TraceMessage, STR2 := Expected);
+TraceMessage := CONCAT(STR1 := TraceMessage, STR2 := ', ACT: ');
+TraceMessage := CONCAT(STR1 := TraceMessage, STR2 := Actual);
+IF LEN(STR := Message) > 0 THEN
+    TraceMessage := CONCAT(STR1 := TraceMessage, STR2 := ', MSG: ');
+    TraceMessage := CONCAT(STR1 := TraceMessage, STR2 := Message);
+END_IF
+TraceWithSeverity(Message := TraceMessage, Severity := Global.TcEventSeverity.Error);]]></ST>
       </Implementation>
     </Method>
   </POU>

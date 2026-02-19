@@ -11,7 +11,7 @@
     - Message (string)
     - Test instance path (string)
 *)
-FUNCTION_BLOCK FB_AssertResultStatic
+FUNCTION_BLOCK FB_AssertResultStatic EXTENDS FB_BaseStatic
 VAR
     // The total number of instances of each of the "AssertResults"
     AssertResults : ARRAY[1..GVL_Param_TcUnit.MaxNumberOfAssertsForEachTestSuite] OF ST_AssertResult;
@@ -66,6 +66,9 @@ ELSE
 		GVL_TcUnit.AdsMessageQueue.WriteLog(msgCtrlMask := ADSLOG_MSGTYPE_ERROR,
 											msgFmtStr := sErrorString,
 											strArg := '');
+		TraceWithSeverity(
+			Message := sErrorString,
+			Severity := Global.TcEventSeverity.Error);
 		AssertResultOverflow := TRUE;
 	END_IF
 END_IF]]></ST>
@@ -170,7 +173,7 @@ END_VAR]]></Declaration>
                                 ExpectedOrActualTypeClass := ActualTypeClass,
                                 ExpectedOrActualValue := ActualValue) AND
         AssertResultInstances[IteratorCounter].AssertResult.Message = Message AND
-        AssertResultInstances[IteratorCounter].AssertResult.Message = TestInstancePath THEN
+        AssertResultInstances[IteratorCounter].AssertResult.TestInstancePath = TestInstancePath THEN
         GetDetectionCountThisCycle := AssertResultInstances[IteratorCounter].DetectionCountThisCycle;
     END_IF
 END_FOR]]></ST>

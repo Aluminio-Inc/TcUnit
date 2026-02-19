@@ -8,11 +8,11 @@
 *)
 {attribute 'call_after_init'}
 {attribute 'reflection'}
-FUNCTION_BLOCK FB_TestSuite
+FUNCTION_BLOCK FB_TestSuite EXTENDS FB_BaseStatic
 VAR
-    {attribute 'instance-path'}
-    {attribute 'noinit'}
-    InstancePath : T_MaxString;
+//     {attribute 'instance-path'}
+//     {attribute 'noinit'}
+//     InstancePath : T_MaxString;
 
     (* We need to have access to specific information of the current task that this test suite
        is executed in. This is for instance necessary when we need to know whether a test is
@@ -47,6 +47,10 @@ VAR
 
     // Number of ordered tests (created by TEST_ORDERED()) that this test suite contains
     NumberOfOrderedTests : UINT(0..GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite);
+
+    // One-shot flag to prevent repeated empty suite trace
+    EmptySuiteTraced : BOOL;
+
 END_VAR]]></Declaration>
     <Implementation>
       <ST><![CDATA[]]></ST>
@@ -111,6 +115,10 @@ FOR IteratorCounter := 1 TO NumberOfTestsToAnalyse BY 1 DO
                 GVL_TcUnit.AdsMessageQueue.WriteLog(MsgCtrlMask := ADSLOG_MSGTYPE_ERROR,
                                                     MsgFmtStr := ErrorMessage,
                                                     StrArg := TrimmedTestName);
+                TraceWithSeverity(
+                    Message := CONCAT('DUPLICATE TEST [', CONCAT(TrimmedTestName,
+                               CONCAT('] in suite ', TestInstancePath))),
+                    Severity := Global.TcEventSeverity.Warning);
             END_IF
         END_IF
         TestCycleCountIndex[IteratorCounter] := CycleCount;
@@ -124,6 +132,9 @@ IF NOT TestWithThisNameAlreadyExists THEN
     TestCycleCountIndex[NumberOfTests] := CycleCount;
     IF IgnoreCurrentTestCase THEN
         Tests[IteratorCounter].SetSkipped();
+        TraceWithSeverity(
+            Message := CONCAT('TEST SKIPPED: ', TrimmedTestName),
+            Severity := Global.TcEventSeverity.Info);
     END_IF
 
     // Extra information to be added if test is ordered (called by TEST_ORDERED())
@@ -180,6 +191,12 @@ END_IF
 GetCurTaskIndex();
 IF NumberOfTests = 0 AND NOT TwinCAT_SystemInfoVarList._TaskInfo[GetCurTaskIndex.index].FirstCycle AND StartedAt > 0 THEN
 	AreAllTestsFinished := TRUE;
+	IF NOT EmptySuiteTraced THEN
+		TraceWithSeverity(
+			Message := CONCAT('EMPTY TEST SUITE - ', InstancePath),
+			Severity := Global.TcEventSeverity.Warning);
+		EmptySuiteTraced := TRUE;
+	END_IF
 END_IF]]></ST>
       </Implementation>
     </Method>
@@ -3558,6 +3575,13 @@ END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[IF Duration = 0.0 THEN
 	Duration := LWORD_TO_LREAL(FinishedAt - StartedAt) * GVL_TcUnit.HundredNanosecondToSecond; // Seconds
+	TraceWithSeverity(
+		Message := CONCAT(CONCAT('SUITE COMPLETE: ', InstancePath),
+				   CONCAT(' - ', CONCAT(UINT_TO_STRING(GetNumberOfSuccessfulTests()), CONCAT(' passed, ',
+				   CONCAT(UINT_TO_STRING(GetNumberOfFailedTests()), CONCAT(' failed, ',
+				   CONCAT(UINT_TO_STRING(GetNumberOfSkippedTests()), CONCAT(' skipped (',
+				   CONCAT(LREAL_TO_STRING(Duration), 's)'))))))))),
+		Severity := Global.TcEventSeverity.Info);
 END_IF]]></ST>
       </Implementation>
     </Method>
@@ -3792,6 +3816,17 @@ FOR IteratorCounter := 1 TO NumberOfTestsToAnalyse BY 1 DO
     IF Tests[IteratorCounter].GetName() = TestName THEN
 		IF NOT Tests[IteratorCounter].IsFinished() THEN
         	Tests[IteratorCounter].SetFinishedAndDuration(FinishedAt := FinishedAt);
+			IF Tests[IteratorCounter].IsFailed() THEN
+				TraceWithSeverity(
+					Message := CONCAT(CONCAT('TEST FAILED: ', TestName),
+							   CONCAT(' (', CONCAT(LREAL_TO_STRING(Tests[IteratorCounter].GetDuration()), 's)'))),
+					Severity := Global.TcEventSeverity.Warning);
+			ELSE
+				TraceWithSeverity(
+					Message := CONCAT(CONCAT('TEST PASSED: ', TestName),
+							   CONCAT(' (', CONCAT(LREAL_TO_STRING(Tests[IteratorCounter].GetDuration()), 's)'))),
+					Severity := Global.TcEventSeverity.Info);
+			END_IF
 		END_IF
 		SetTestFinished := TRUE;
         RETURN;

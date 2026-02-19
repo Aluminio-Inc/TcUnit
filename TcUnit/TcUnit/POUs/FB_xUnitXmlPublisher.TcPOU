@@ -2,7 +2,7 @@
 <TcPlcObject Version="1.1.0.1">
   <POU Name="FB_xUnitXmlPublisher" Id="{6597c0b3-0890-4d5d-8d3a-2d0d0b2355db}" SpecialFunc="None">
     <Declaration><![CDATA[// Publishes test results into an xUnit compatible Xml file
-FUNCTION_BLOCK FB_xUnitXmlPublisher IMPLEMENTS I_TestResultLogger
+FUNCTION_BLOCK FB_xUnitXmlPublisher EXTENDS FB_BaseStatic IMPLEMENTS I_TestResultLogger
 VAR
     // Dependency injection via FB_Init
     TestResults : I_TestResults;
@@ -25,16 +25,29 @@ END_VAR]]></Declaration>
     Deletes the former file (if it exists).
     Opens the file, writes the buffer and closes it.
 *)
-METHOD PRIVATE DeleteOpenWriteClose : SysFile.SysTypes.RTS_IEC_RESULT;]]></Declaration>
+METHOD PRIVATE DeleteOpenWriteClose : SysFile.SysTypes.RTS_IEC_RESULT;
+VAR
+    WriteResult : SysFile.SysTypes.RTS_IEC_RESULT;
+END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[DeleteOpenWriteClose := SysDir.CmpErrors.Errors.ERR_OK;
 IF Initialised() THEN
+    // Delete may fail if file doesn't exist yet (first run) — not a real error
     DeleteOpenWriteClose := MAX(DeleteOpenWriteClose, File.Delete(Filename := GVL_Param_TcUnit.xUnitFilePath));
-    DeleteOpenWriteClose := MAX(DeleteOpenWriteClose, File.Open(Filename := GVL_Param_TcUnit.xUnitFilePath, FileAccessMode := AccessMode));
-    DeleteOpenWriteClose := MAX(DeleteOpenWriteClose, File.Write(BufferPointer := ADR(Buffer), Xml.Length)); 
-    DeleteOpenWriteClose := MAX(DeleteOpenWriteClose, File.Close());
+    // Track Open/Write/Close separately for trace — these are the real errors
+    WriteResult := File.Open(Filename := GVL_Param_TcUnit.xUnitFilePath, FileAccessMode := AccessMode);
+    WriteResult := MAX(WriteResult, File.Write(BufferPointer := ADR(Buffer), Xml.Length));
+    WriteResult := MAX(WriteResult, File.Close());
+    DeleteOpenWriteClose := MAX(DeleteOpenWriteClose, WriteResult);
 ELSE
-    DeleteOpenWriteClose := SysDir.CmpErrors.Errors.ERR_NOBUFFER;
+    WriteResult := SysDir.CmpErrors.Errors.ERR_NOBUFFER;
+    DeleteOpenWriteClose := WriteResult;
+END_IF;
+
+IF WriteResult <> SysDir.CmpErrors.Errors.ERR_OK THEN
+    TraceWithSeverity(
+        Message := CONCAT('xUnit file I/O failure: ', GVL_Param_TcUnit.xUnitFilePath),
+        Severity := Global.TcEventSeverity.Error);
 END_IF;]]></ST>
       </Implementation>
     </Method>
@@ -171,6 +184,10 @@ IF PublishTrigger.Q THEN
     GVL_TcUnit.AdsMessageQueue.WriteLog(MsgCtrlMask := ADSLOG_MSGTYPE_HINT,
                                         MsgFmtStr := '%s',
                                         StrArg := '| ======================================');
+
+    TraceWithSeverity(
+        Message := CONCAT('xUnit XML exported to ', GVL_Param_TcUnit.xUnitFilePath),
+        Severity := Global.TcEventSeverity.Info);
 END_IF]]></ST>
       </Implementation>
     </Method>

@@ -7,7 +7,7 @@
     <ProjectGuid>{bc994085-3b01-480d-ab11-95935fc773ee}</ProjectGuid>
     <SubObjectsSortedByName>True</SubObjectsSortedByName>
     <Name>TcUnit</Name>
-    <ProgramVersion>3.1.4022.2</ProgramVersion>
+    <ProgramVersion>3.1.4026.20</ProgramVersion>
     <Application>{ef88cd93-7c77-4337-a1f5-9a5cc5c23895}</Application>
     <TypeSystem>{b9dd9399-befd-4ade-8d6e-e87454faded8}</TypeSystem>
     <Implicit_Task_Info>{3f197daf-a04e-43c2-bba0-c0c5e1ae9792}</Implicit_Task_Info>
@@ -32,8 +32,9 @@ Documentation and examples are available at www.tcunit.org</Description>
     </SelectedLibraryCategories>
     <Company>www.tcunit.org</Company>
     <Author>Jakob Sagatowski and contributors</Author>
-    <ProjectVersion>1.3.2</ProjectVersion>
+    <ProjectVersion>2026.2.19.1</ProjectVersion>
     <WriteProductVersion>false</WriteProductVersion>
+    <GlobalVersionStructureIncluded>true</GlobalVersionStructureIncluded>
     <!--    <OutputType>Exe</OutputType>
     <RootNamespace>MyApplication</RootNamespace>
     <AssemblyName>MyApplication</AssemblyName>-->
@@ -253,6 +254,10 @@ Documentation and examples are available at www.tcunit.org</Description>
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <PlaceholderReference Include="Base">
+      <DefaultResolution>Base, * (Photara)</DefaultResolution>
+      <Namespace>Base</Namespace>
+    </PlaceholderReference>
     <PlaceholderReference Include="SysDir">
       <DefaultResolution>SysDir, * (System)</DefaultResolution>
       <Namespace>SysDir</Namespace>
@@ -268,62 +273,10 @@ Documentation and examples are available at www.tcunit.org</Description>
     <PlaceholderReference Include="Tc2_System">
       <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
       <Namespace>Tc2_System</Namespace>
-      <Parameters>
-        <Parameter ListName="PARAM" xmlns="">
-          <Key>TABLE_UPPER_BOUND</Key>
-          <Value>15</Value>
-        </Parameter>
-        <Parameter ListName="PARAM" xmlns="">
-          <Key>STRING_LENGTH_EXP</Key>
-          <Value>255</Value>
-        </Parameter>
-        <Parameter ListName="PARAM" xmlns="">
-          <Key>STRING_LENGTH_ADDRESS</Key>
-          <Value>20</Value>
-        </Parameter>
-        <Parameter ListName="PARAM" xmlns="">
-          <Key>STRING_LENGTH_COMMENT</Key>
-          <Value>255</Value>
-        </Parameter>
-        <Parameter ListName="PARAM" xmlns="">
-          <Key>STRING_LENGTH_OUTSTRING</Key>
-          <Value>255</Value>
-        </Parameter>
-        <Parameter ListName="PARAM" xmlns="">
-          <Key>TABLE_SHOW_VALID_ITEMS</Key>
-          <Value>FALSE</Value>
-        </Parameter>
-      </Parameters>
     </PlaceholderReference>
     <PlaceholderReference Include="Tc2_Utilities">
       <DefaultResolution>Tc2_Utilities, * (Beckhoff Automation GmbH)</DefaultResolution>
       <Namespace>Tc2_Utilities</Namespace>
-      <Parameters>
-        <Parameter ListName="PARAMETERLIST" xmlns="">
-          <Key>NMAXLICENSES</Key>
-          <Value>50</Value>
-        </Parameter>
-        <Parameter ListName="PARAMETERLIST" xmlns="">
-          <Key>NMAXLICENSEDEVICES</Key>
-          <Value>16</Value>
-        </Parameter>
-        <Parameter ListName="PARAMETERLIST" xmlns="">
-          <Key>NMAXCPUCOUNT</Key>
-          <Value>64</Value>
-        </Parameter>
-        <Parameter ListName="PARAMETERLIST" xmlns="">
-          <Key>CMAXCHARACTERS</Key>
-          <Value>16#FFFFFFF0</Value>
-        </Parameter>
-        <Parameter ListName="PARAMETERLIST" xmlns="">
-          <Key>NMAXFILESONDONGLE</Key>
-          <Value>20</Value>
-        </Parameter>
-        <Parameter ListName="PARAMETERLIST" xmlns="">
-          <Key>CMAXCSVFIELDVALUESIZE</Key>
-          <Value>255</Value>
-        </Parameter>
-      </Parameters>
     </PlaceholderReference>
   </ItemGroup>
   <ItemGroup>
