@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git remote add:*)",
+      "Bash(git fetch:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git remote remove:*)",
+      "Bash(git tag:*)",
+      "Bash(gh api:*)",
+      "Bash(git mv:*)"
+    ]
+  }
+}

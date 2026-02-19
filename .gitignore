@@ -10,7 +10,7 @@
 *.compileinfo
 *.tmc
 *.tmcRefac
-*.library
+#*.library
 *.project.~u
 *.tsproj.bak
 *.xti.bak
