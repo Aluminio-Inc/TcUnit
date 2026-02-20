@@ -29,7 +29,34 @@
 
 ## What to Build Next
 
-_All phases complete. No pending work._
+### Phase 4: Per-Cycle Test Throttling (Proposed)
+
+**Value**: High | **Effort**: Medium | **Prerequisites**: None (Phases 1-3 complete)
+**Status**: Brainstorming — see OPEN_DECISIONS.md decision #4
+**Why**: Heavy test suites (e.g., `FB_SequencerAssertTests` with behavioral mock harnesses) cause PLC cycle overruns because TcUnit executes all test methods within a suite in a single scan. This blocks scaling to 25+ sequencer tests.
+
+**Proposed approach**: Add `RUN_THROTTLED(nMaxTests, tBetween)` entry point that limits how many test methods execute per PLC cycle. Non-breaking — existing `RUN()` and `RUN_IN_SEQUENCE()` unchanged.
+
+**Open questions**:
+- Should throttling be global (across all suites) or per-suite? (Decisions #4 vs #8)
+- How do multi-cycle tests (state machines that need to be called every cycle) interact with throttling?
+- What's the right default? Unlimited (backward compat) vs conservative (e.g., 3)?
+
+**Related scaling proposals** (all in OPEN_DECISIONS.md):
+- **#4** Per-cycle test throttling (global `RUN_THROTTLED` entry point)
+- **#5** Suite tagging / selective execution (`RUN(sTag := 'sequencer')`)
+- **#6** Adaptive cycle-time throttling (monitor `PlcTaskSystemInfo.LastExecTime`, auto-back-off)
+- **#7** Staggered suite warm-up (init-phase calls one suite per cycle before main execution)
+- **#8** Per-suite `MaxTestsPerCycle` property (heavy suites self-throttle, lightweight suites unaffected)
+- **#9** Chunked result reporting (spread ADS messages and result aggregation across cycles)
+
+These can be implemented independently. Rough priority by value:
+1. **#5 (tagging)** + **#8 (per-suite throttle)** — highest practical impact, most likely to be adopted
+2. **#6 (adaptive throttle)** — elegant but depends on `PlcTaskSystemInfo` access pattern
+3. **#7 (warm-up)** + **#9 (chunked reporting)** — smooth edges, lower priority
+4. **#4 (global RUN_THROTTLED)** — may be superseded by #8 if per-suite is chosen
+
+**Decision required before implementation**: OPEN_DECISIONS.md #4–#9
 
 ---
 
