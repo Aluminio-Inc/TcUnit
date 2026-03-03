@@ -196,6 +196,10 @@ IF (GVL_TcUnit.NumberOfInitializedTestSuites = 0 OR PrintingTestSuiteResultNumbe
                    CONCAT(' passed, ',
                    CONCAT(UINT_TO_STRING(TcUnitTestResults.NumberOfFailedTestCases), ' failed')))))),
         Severity := Global.TcEventSeverity.Info);
+
+    // Flush JSON event log so ToolPackageManager can read results immediately
+    Base.GVL_System.FileHandlerJson.RequestFlush();
+
     PrintedFinalTestResults := TRUE;
 END_IF]]></ST>
       </Implementation>

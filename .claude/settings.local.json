@@ -7,7 +7,10 @@
       "Bash(git remote remove:*)",
       "Bash(git tag:*)",
       "Bash(gh api:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(cat:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

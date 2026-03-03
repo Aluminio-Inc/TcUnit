@@ -32,7 +32,7 @@ Documentation and examples are available at www.tcunit.org</Description>
     </SelectedLibraryCategories>
     <Company>www.tcunit.org</Company>
     <Author>Jakob Sagatowski and contributors</Author>
-    <ProjectVersion>2026.2.19.1</ProjectVersion>
+    <ProjectVersion>2026.3.2.2</ProjectVersion>
     <WriteProductVersion>false</WriteProductVersion>
     <GlobalVersionStructureIncluded>true</GlobalVersionStructureIncluded>
     <!--    <OutputType>Exe</OutputType>
@@ -288,6 +288,11 @@ Documentation and examples are available at www.tcunit.org</Description>
     <LibraryReference Include="Base Interfaces,newest,System">
       <Namespace>IBaseLibrary</Namespace>
     </LibraryReference>
+  </ItemGroup>
+  <ItemGroup>
+    <PlaceholderResolution Include="Base">
+      <Resolution>Base, 2026.3.2.1 (Photara)</Resolution>
+    </PlaceholderResolution>
   </ItemGroup>
   <ProjectExtensions>
     <PlcProjectOptions>
