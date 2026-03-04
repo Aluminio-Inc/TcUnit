@@ -1,6 +1,8 @@
 # Documentation Strategy
 
-_Last updated: 2026-02-16_
+_Last updated: 2026-03-04_
+
+**repobasedocs-version: v2.2.0**
 
 This document defines **when and how** project documentation must be updated. It is the enforcement mechanism for the RepoBaseDocs framework. Agents and humans follow these rules to prevent documentation drift.
 
