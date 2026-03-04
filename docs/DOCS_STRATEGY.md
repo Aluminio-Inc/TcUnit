@@ -43,6 +43,14 @@ Project state is the **dashboard**. It answers "where are we?" at a glance. Upda
 
 Open decisions track **choices that block or shape work**. Add decisions as soon as they are identified, even before options are clear. When a decision is made, move it to the Decided section using the ADR format -- never delete the Open entry, replace it with an ADR. Include rationale and consequences so future agents understand *why*.
 
+### PROJECT_SPEC.md
+
+The project spec is the **identity document** -- intent, constraints, quality attributes, scope boundaries. Only a human edits this file. Agents treat it as immutable context. Update when the project's mission, constraints, or scope boundaries change.
+
+### CLOSED_DECISION_LOG.md
+
+The closed decision log is the **micro-decision record**. Executing agents write entries when they encounter design forks not covered by the task brief or OPEN_DECISIONS defaults. Humans read it to understand what choices were made during task execution and why. Append-only -- never delete entries.
+
 ### DOCS_STRATEGY.md (this file)
 
 Update this file when the documentation process itself changes -- new triggers, new documents added to the set, or changes to the session handoff ritual.

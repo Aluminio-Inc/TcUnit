@@ -65,9 +65,10 @@ _Nothing blocked._
 
 Read these documents in this order:
 
-1. **PROJECT_STATE.md** (this file) — Where we are
-2. **EXECUTION_PLAN.md** — What to build next
-3. **BREADCRUMBS.md** — What to watch out for
-4. **Your assigned TASK_BRIEF** — What specifically to do
+1. **PROJECT_SPEC.md** — What this project is (identity, constraints, scope)
+2. **PROJECT_STATE.md** (this file) — Where we are
+3. **EXECUTION_PLAN.md** — What to build next
+4. **BREADCRUMBS.md** — What to watch out for
+5. **Your assigned TASK_BRIEF** — What specifically to do
 
 Do not rebuild completed work. The "What is Done" table above shows what's already built. Check BREADCRUMBS.md before starting — it contains gotchas that will save you time.
