@@ -152,6 +152,8 @@ Remaining FBs   Result Logging [DONE]
 
 Decisions that affect the execution plan are tracked in [OPEN_DECISIONS.md](./OPEN_DECISIONS.md). Reference them here when a phase is blocked by an unresolved decision.
 
+For detailed hardening and modernization work in `TcUnit-Verifier_DotNet`, see [VERIFIER_IMPROVEMENT_PLAN.md](./VERIFIER_IMPROVEMENT_PLAN.md).
+
 ---
 
 ## For New Agents / Sessions

@@ -32,6 +32,12 @@ _No active work items. All phases complete._
 
 ---
 
+## Planned (Proposed)
+
+- Verifier reliability and modernization plan for `TcUnit-Verifier_DotNet`: [VERIFIER_IMPROVEMENT_PLAN.md](./VERIFIER_IMPROVEMENT_PLAN.md)
+
+---
+
 ## What is Blocked
 
 _Nothing blocked._

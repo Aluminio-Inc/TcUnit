@@ -3,6 +3,14 @@
   - [Download](download.md)
   - [Code & Issues](https://www.github.com/TcUnit/TcUnit)
   - [FAQ](faq.md)
+  - [Verifier Improvement Plan](VERIFIER_IMPROVEMENT_PLAN.md)
+  - [Verifier PR Plans](verifier/README.md)
+    - [PR1 Exit Semantics](verifier/pr1.md)
+    - [PR2 Timeout Policy](verifier/pr2.md)
+    - [PR3 Parser Hardening](verifier/pr3.md)
+    - [PR4 Config + Preflight](verifier/pr4.md)
+    - [PR5 Build Modernization](verifier/pr5.md)
+    - [PR6 Docs + Runbooks](verifier/pr6.md)
 
 - Manuals
   - [Unit testing concepts](unit-testing-concepts.md)
