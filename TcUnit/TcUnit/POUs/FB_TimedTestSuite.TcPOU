@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_TimedTestSuite" Id="{5e33d4a6-9874-4cbf-870e-04aa88da4d32}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_TimedTestSuite EXTENDS FB_TestSuite
+VAR
+    TimedTestStates      : ARRAY[1..GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite] OF ST_TimedTestState;
+    _nActiveTimedTestIdx : UINT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Method Name="_FindTestIndex" Id="{93a8820b-d223-4dd7-9fef-df26f4027590}">
+      <Declaration><![CDATA[METHOD PRIVATE _FindTestIndex : UINT
+VAR_INPUT
+    TestName : T_MaxString;
+END_VAR
+VAR
+    i : UINT;
+    nMax : UINT;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[_FindTestIndex := 0;
+nMax := GetNumberOfTestsToAnalyse();
+FOR i := 1 TO nMax BY 1 DO
+    IF Tests[i].GetName() = TestName THEN
+        _FindTestIndex := i;
+        RETURN;
+    END_IF
+END_FOR]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="TEST_TIMED" Id="{0013f9b0-ffec-48b5-9296-b6859eeadc7a}">
+      <Declaration><![CDATA[METHOD PUBLIC TEST_TIMED : BOOL
+VAR_INPUT
+    TestName       : T_MaxString;
+    tSafetyTimeout : TIME;
+END_VAR
+VAR
+    idx         : UINT;
+    lrElapsed   : LREAL;
+    lrTimeout   : LREAL;
+    sMsg        : T_MaxString;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[TEST_TIMED := FALSE;
+
+// Step 1: Reset context
+_nActiveTimedTestIdx := 0;
+
+// Step 2: Trim name
+TestName := F_LTrim(in := F_RTrim(in := TestName));
+
+// Step 3: Register test via free function TEST()
+TEST(TestName := TestName);
+
+// Step 4: Check skip/ignore
+IF GVL_TcUnit.IgnoreCurrentTest THEN
+    RETURN;
+END_IF
+
+// Step 5: Find test index
+idx := _FindTestIndex(TestName := TestName);
+IF idx = 0 THEN
+    RETURN;
+END_IF
+_nActiveTimedTestIdx := idx;
+
+// Step 6: Check already finished
+IF TimedTestStates[idx].bSafetyTimedOut OR IsTestFinished(TestName := TestName) THEN
+    GVL_TcUnit.CurrentTestIsFinished := TRUE;
+    RETURN;
+END_IF
+
+// Step 7: Initialize on first call
+IF NOT TimedTestStates[idx].bInitialized THEN
+    TimedTestStates[idx].nSafetyStartTime := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
+    TimedTestStates[idx].tSafetyTimeout := tSafetyTimeout;
+    TimedTestStates[idx].bInitialized := TRUE;
+END_IF
+
+// Step 8: Check safety timeout (compare against stored value)
+lrElapsed := ULINT_TO_LREAL(F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter) - TimedTestStates[idx].nSafetyStartTime)
+             * GVL_TcUnit.HundredNanosecondToSecond;
+lrTimeout := TIME_TO_LREAL(TimedTestStates[idx].tSafetyTimeout) / 1000.0;
+
+IF lrElapsed > lrTimeout THEN
+    sMsg := CONCAT('SAFETY TIMEOUT: Test "', CONCAT(TestName, CONCAT('" exceeded ', LREAL_TO_FMTSTR(lrTimeout, 1, TRUE))));
+    sMsg := CONCAT(sMsg, 's');
+
+    SetTestFailed(AssertionType := E_AssertionType.Type_TIMEOUT,
+                  AssertionMessage := sMsg);
+    SetTestFinished(TestName := TestName,
+                    FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
+    CalculateAndSetNumberOfAssertsForTest(TestName := TestName);
+
+    TimedTestStates[idx].bSafetyTimedOut := TRUE;
+    GVL_TcUnit.CurrentTestIsFinished := TRUE;
+
+    TraceWithSeverity(Message := sMsg, Severity := TcEventSeverity.Warning);
+    RETURN;
+END_IF
+
+// Step 9: Test body should execute
+TEST_TIMED := TRUE;]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>
