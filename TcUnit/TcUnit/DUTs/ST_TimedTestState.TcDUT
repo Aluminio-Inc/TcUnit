@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <DUT Name="ST_TimedTestState" Id="{9d0fddee-0599-470c-b101-f38bc2c77ade}">
+    <Declaration><![CDATA[TYPE ST_TimedTestState :
+STRUCT
+    tSafetyTimeout     : TIME;
+    nSafetyStartTime   : LWORD;
+    bSafetyTimedOut    : BOOL;
+    bInitialized       : BOOL;
+
+    nWaitStartTime     : LWORD;
+    bWaitComplete      : BOOL;
+    bConditionTimedOut : BOOL;
+    eWaitType          : E_WaitType;
+    tLatchedDuration   : TIME;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

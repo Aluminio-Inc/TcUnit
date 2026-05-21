@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <DUT Name="ST_TimedTestResult" Id="{491ec40a-95a0-4b2a-93d5-e96dd1d68451}">
+    <Declaration><![CDATA[TYPE ST_TimedTestResult :
+STRUCT
+    TestName           : T_MaxString;
+    bIsFailed          : BOOL;
+    bIsSkipped         : BOOL;
+    bIsFinished        : BOOL;
+    sFailureMessage    : T_MaxString;
+    eFailureType       : E_AssertionType;
+    nNumberOfAsserts   : UINT;
+    lrDuration         : LREAL;
+    stTimedState       : ST_TimedTestState;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>
