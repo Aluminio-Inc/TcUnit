@@ -3775,7 +3775,7 @@ END_IF]]></ST>
       </Implementation>
     </Method>
     <Method Name="SetTestFailed" Id="{79b1664f-2570-4cef-bd6e-d7307d9a7818}">
-      <Declaration><![CDATA[METHOD PRIVATE SetTestFailed
+      <Declaration><![CDATA[METHOD INTERNAL SetTestFailed
 VAR_INPUT
     AssertionType : E_AssertionType;
     AssertionMessage : T_MaxString;

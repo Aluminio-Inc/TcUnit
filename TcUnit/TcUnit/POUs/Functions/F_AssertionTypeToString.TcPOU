@@ -141,6 +141,13 @@ END_VAR]]></Declaration>
     E_AssertionType.Type_Array_WORD :
         F_AssertionTypeToString := 'Array_WORD';
 
+    (* Timed test types *)
+    E_AssertionType.Type_TIMEOUT :
+        F_AssertionTypeToString := 'TIMEOUT';
+
+    E_AssertionType.Type_WAIT_MISUSE :
+        F_AssertionTypeToString := 'WAIT_MISUSE';
+
     ELSE
         F_AssertionTypeToString := 'UNDEFINED';
 

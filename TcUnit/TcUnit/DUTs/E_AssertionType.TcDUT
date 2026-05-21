@@ -51,7 +51,11 @@ TYPE E_AssertionType :
     Type_Array_UINT,
     Type_Array_ULINT,
     Type_Array_USINT,
-    Type_Array_WORD
+    Type_Array_WORD,
+
+    // Timed test types
+    Type_TIMEOUT,
+    Type_WAIT_MISUSE
 ) BYTE;
 END_TYPE]]></Declaration>
   </DUT>
