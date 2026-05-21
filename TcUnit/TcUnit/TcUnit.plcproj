@@ -7,7 +7,7 @@
     <ProjectGuid>{bc994085-3b01-480d-ab11-95935fc773ee}</ProjectGuid>
     <SubObjectsSortedByName>True</SubObjectsSortedByName>
     <Name>TcUnit</Name>
-    <ProgramVersion>3.1.4026.20</ProgramVersion>
+    <ProgramVersion>3.1.4026.21</ProgramVersion>
     <Application>{ef88cd93-7c77-4337-a1f5-9a5cc5c23895}</Application>
     <TypeSystem>{b9dd9399-befd-4ade-8d6e-e87454faded8}</TypeSystem>
     <Implicit_Task_Info>{3f197daf-a04e-43c2-bba0-c0c5e1ae9792}</Implicit_Task_Info>
@@ -32,7 +32,7 @@ Documentation and examples are available at www.tcunit.org</Description>
     </SelectedLibraryCategories>
     <Company>www.tcunit.org</Company>
     <Author>Jakob Sagatowski and contributors</Author>
-    <ProjectVersion>2026.3.3.3</ProjectVersion>
+    <ProjectVersion>2026.4.9.1</ProjectVersion>
     <WriteProductVersion>false</WriteProductVersion>
     <GlobalVersionStructureIncluded>true</GlobalVersionStructureIncluded>
     <!--    <OutputType>Exe</OutputType>
@@ -80,6 +80,15 @@ Documentation and examples are available at www.tcunit.org</Description>
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="DUTs\U_ExpectedOrActual.TcDUT">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="DUTs\E_WaitType.TcDUT">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="DUTs\ST_TimedTestState.TcDUT">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="DUTs\ST_TimedTestResult.TcDUT">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="GVLs\GVL_Param_TcUnit.TcGVL">
@@ -136,6 +145,9 @@ Documentation and examples are available at www.tcunit.org</Description>
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="POUs\FB_TestSuite.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="POUs\FB_TimedTestSuite.TcPOU">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="POUs\FB_XmlControl.TcPOU">
@@ -291,14 +303,14 @@ Documentation and examples are available at www.tcunit.org</Description>
   </ItemGroup>
   <ItemGroup>
     <PlaceholderResolution Include="Base">
-      <Resolution>Base, 2026.3.3.3 (Photara)</Resolution>
+      <Resolution>Base, 2026.4.8.2 (Photara)</Resolution>
     </PlaceholderResolution>
   </ItemGroup>
   <ProjectExtensions>
     <PlcProjectOptions>
       <XmlArchive>
-  <Data>
-    <o xml:space="preserve" t="OptionKey">
+        <Data>
+          <o xml:space="preserve" t="OptionKey">
       <v n="Name">"&lt;ProjectRoot&gt;"</v>
       <d n="SubKeys" t="Hashtable" ckt="String" cvt="OptionKey">
         <v>{192FAD59-8248-4824-A8DE-9177C94C195A}</v>
@@ -385,15 +397,15 @@ Documentation and examples are available at www.tcunit.org</Description>
       </d>
       <d n="Values" t="Hashtable" />
     </o>
-  </Data>
-  <TypeList>
-    <Type n="Boolean">System.Boolean</Type>
-    <Type n="Hashtable">System.Collections.Hashtable</Type>
-    <Type n="Int32">System.Int32</Type>
-    <Type n="OptionKey">{54dd0eac-a6d8-46f2-8c27-2f43c7e49861}</Type>
-    <Type n="String">System.String</Type>
-  </TypeList>
-</XmlArchive>
+        </Data>
+        <TypeList>
+          <Type n="Boolean">System.Boolean</Type>
+          <Type n="Hashtable">System.Collections.Hashtable</Type>
+          <Type n="Int32">System.Int32</Type>
+          <Type n="OptionKey">{54dd0eac-a6d8-46f2-8c27-2f43c7e49861}</Type>
+          <Type n="String">System.String</Type>
+        </TypeList>
+      </XmlArchive>
     </PlcProjectOptions>
   </ProjectExtensions>
   <!-- 
