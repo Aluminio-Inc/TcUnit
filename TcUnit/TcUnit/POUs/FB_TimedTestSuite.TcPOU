@@ -273,5 +273,123 @@ END_IF]]></ST>
         </Implementation>
       </Get>
     </Property>
+    <Method Name="TEST_TIMED_ORDERED" Id="{5e0303e8-2443-4c00-9f81-4aeaec60b00c}">
+      <Declaration><![CDATA[METHOD PUBLIC TEST_TIMED_ORDERED : BOOL
+VAR_INPUT
+    TestName       : T_MaxString;
+    tSafetyTimeout : TIME;
+END_VAR
+VAR
+    CounterTestSuiteAddress : UINT;
+    SuiteIndex              : UINT;
+    Test                    : REFERENCE TO FB_Test;
+    idx                     : UINT;
+    lrElapsed               : LREAL;
+    lrTimeout               : LREAL;
+    sMsg                    : T_MaxString;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[TEST_TIMED_ORDERED := FALSE;
+
+// Step 1: Reset context
+_nActiveTimedTestIdx := 0;
+
+// Step 2: Trim name (matches TEST_ORDERED line 34)
+TestName := F_LTrim(in := F_RTrim(in := TestName));
+
+// Step 3: Set global test name (matches line 37)
+GVL_TcUnit.CurrentTestNameBeingCalled := TestName;
+
+// Step 4: Find suite in runner registry (matches lines 44-47)
+SuiteIndex := 0;
+FOR CounterTestSuiteAddress := 1 TO GVL_TcUnit.NumberOfInitializedTestSuites BY 1 DO
+    IF GVL_TcUnit.TestSuiteAddresses[CounterTestSuiteAddress] = GVL_TcUnit.CurrentTestSuiteBeingCalled THEN
+        SuiteIndex := CounterTestSuiteAddress;
+        EXIT;
+    END_IF
+END_FOR
+IF SuiteIndex = 0 THEN
+    RETURN;
+END_IF
+
+// Step 5: Register as ordered test (matches line 48)
+Test REF= GVL_TcUnit.TestSuiteAddresses[SuiteIndex]^.AddTest(TestName := TestName, IsTestOrdered := TRUE);
+
+// Step 6: Set CurrentTestIsFinished (matches line 49)
+GVL_TcUnit.CurrentTestIsFinished := GVL_TcUnit.TestSuiteAddresses[SuiteIndex]^.IsTestFinished(TestName := TestName);
+
+// Step 7: Check skip/ignore (matches lines 76-78)
+IF GVL_TcUnit.IgnoreCurrentTest THEN
+    RETURN;
+END_IF
+
+// Step 8: Check ordered cursor (matches lines 55-74)
+IF GetTestOrderNumber(TestName := TestName) = GVL_TcUnit.CurrentlyRunningOrderedTestInTestSuite[SuiteIndex] THEN
+    IF GVL_TcUnit.CurrentTestIsFinished THEN
+        // Already finished - advance cursor (matches lines 58-62)
+        GVL_TcUnit.CurrentlyRunningOrderedTestInTestSuite[SuiteIndex] :=
+            GVL_TcUnit.CurrentlyRunningOrderedTestInTestSuite[SuiteIndex] + 1;
+        GVL_TcUnit.IgnoreCurrentTest := TRUE;
+        RETURN;
+    END_IF
+ELSE
+    // Not this test's turn (matches lines 70-73)
+    GVL_TcUnit.IgnoreCurrentTest := TRUE;
+    RETURN;
+END_IF
+
+// --- From here: this test's turn AND not finished. Add timed-test logic. ---
+
+// Step 9: Find timed test index
+idx := _FindTestIndex(TestName := TestName);
+IF idx = 0 THEN
+    RETURN;
+END_IF
+_nActiveTimedTestIdx := idx;
+
+// Step 10: Check already timed out
+IF TimedTestStates[idx].bSafetyTimedOut THEN
+    GVL_TcUnit.CurrentTestIsFinished := TRUE;
+    RETURN;
+END_IF
+
+// Step 11: Initialize on first call
+IF NOT TimedTestStates[idx].bInitialized THEN
+    TimedTestStates[idx].nSafetyStartTime := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
+    TimedTestStates[idx].tSafetyTimeout := tSafetyTimeout;
+    TimedTestStates[idx].bInitialized := TRUE;
+END_IF
+
+// Step 12: Check safety timeout (compare against stored value)
+lrElapsed := ULINT_TO_LREAL(F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter) - TimedTestStates[idx].nSafetyStartTime)
+             * GVL_TcUnit.HundredNanosecondToSecond;
+lrTimeout := TIME_TO_LREAL(TimedTestStates[idx].tSafetyTimeout) / 1000.0;
+
+IF lrElapsed > lrTimeout THEN
+    sMsg := CONCAT('SAFETY TIMEOUT: Test "', CONCAT(TestName, CONCAT('" exceeded ', LREAL_TO_FMTSTR(lrTimeout, 1, TRUE))));
+    sMsg := CONCAT(sMsg, 's');
+
+    SetTestFailed(AssertionType := E_AssertionType.Type_TIMEOUT,
+                  AssertionMessage := sMsg);
+    SetTestFinished(TestName := TestName,
+                    FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
+    CalculateAndSetNumberOfAssertsForTest(TestName := TestName);
+
+    TimedTestStates[idx].bSafetyTimedOut := TRUE;
+    GVL_TcUnit.CurrentTestIsFinished := TRUE;
+
+    TraceWithSeverity(Message := sMsg, Severity := TcEventSeverity.Warning);
+    RETURN;
+END_IF
+
+// Step 13: Set started timestamp (matches line 66)
+IF __ISVALIDREF(Test) THEN
+    Test.SetStartedAtIfNotSet(Timestamp := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
+END_IF
+
+// Step 14: Test body should execute
+TEST_TIMED_ORDERED := TRUE;]]></ST>
+      </Implementation>
+    </Method>
   </POU>
 </TcPlcObject>
