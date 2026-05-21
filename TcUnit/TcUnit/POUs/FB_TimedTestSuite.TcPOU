@@ -391,5 +391,36 @@ END_IF
 TEST_TIMED_ORDERED := TRUE;]]></ST>
       </Implementation>
     </Method>
+    <Method Name="GetTimedTestResult" Id="{0d1b3cc6-3a78-434f-bd11-b934903f7c9d}">
+      <Declaration><![CDATA[METHOD PUBLIC GetTimedTestResult : ST_TimedTestResult
+VAR_INPUT
+    TestName : T_MaxString;
+END_VAR
+VAR
+    idx  : UINT;
+    Test : REFERENCE TO FB_Test;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[idx := _FindTestIndex(TestName := TestName);
+IF idx = 0 THEN
+    RETURN;
+END_IF
+
+Test REF= Tests[idx];
+IF NOT __ISVALIDREF(Test) THEN
+    RETURN;
+END_IF
+
+GetTimedTestResult.TestName := Test.GetName();
+GetTimedTestResult.bIsFailed := Test.IsFailed();
+GetTimedTestResult.bIsSkipped := Test.IsSkipped();
+GetTimedTestResult.bIsFinished := Test.IsFinished();
+GetTimedTestResult.sFailureMessage := Test.GetAssertionMessage();
+GetTimedTestResult.eFailureType := Test.GetAssertionType();
+GetTimedTestResult.nNumberOfAsserts := Test.GetNumberOfAssertions();
+GetTimedTestResult.lrDuration := Test.GetDuration();
+GetTimedTestResult.stTimedState := TimedTestStates[idx];]]></ST>
+      </Implementation>
+    </Method>
   </POU>
 </TcPlcObject>
