@@ -1,6 +1,6 @@
 # Development Breadcrumbs
 
-**Last Updated**: 2026-02-19
+**Last Updated**: 2026-05-21
 
 Hard-won knowledge, gotchas, and patterns that save future agents from repeating mistakes.
 
@@ -62,6 +62,30 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 **Symptom**: TraceWithSeverity fires "file I/O failure" on first run even though the file was successfully created and written.
 **Cause**: `FB_xUnitXmlPublisher.DeleteOpenWriteClose()` uses `MAX()` to accumulate results across Delete → Open → Write → Close. If `File.Delete()` returns a non-OK code for a non-existent file (first run), the MAX chain propagates that error even though Open/Write/Close all succeeded.
 **Solution**: Track Open/Write/Close results in a separate `WriteResult` variable. Only trace on `WriteResult` failure, not on the combined `DeleteOpenWriteClose` return value. The method's return value still includes the Delete result for backward compatibility.
+
+### 10. SetTestFailed Was PRIVATE — Changed to INTERNAL for FB_TimedTestSuite
+
+**Symptom**: FB_TimedTestSuite cannot call `SetTestFailed` for safety timeout or wait-misuse auto-fail paths.
+**Cause**: `SetTestFailed` was `METHOD PRIVATE` on FB_TestSuite, inaccessible to subclasses.
+**Solution**: Changed to `METHOD INTERNAL` (accessible within same library). `SetTestFinished` and `CalculateAndSetNumberOfAssertsForTest` were already INTERNAL. The safety timeout path must call all three in sequence to replicate the full `TEST_FINISHED()` bookkeeping.
+
+### 11. _nActiveTimedTestIdx Stale After Final Test Method
+
+**Symptom**: A wait call after the last test method in a scan could bind to the wrong test.
+**Cause**: `_nActiveTimedTestIdx` is reset to 0 at the START of each `TEST_TIMED`/`TEST_TIMED_ORDERED` call, but retains the last test's index after the final test method returns.
+**Solution**: Documented as undefined behavior. Wait methods must only be called inside `IF TEST_TIMED(...) THEN ... END_IF` blocks. The context check (`idx = 0`) is best-effort, not a guarantee.
+
+### 12. WaitForCondition Must Check Condition BEFORE Starting Wait
+
+**Symptom**: `WaitForCondition(TRUE, T#5S)` returns FALSE on first call even though condition is already met.
+**Cause**: Original design started the wait timer on first call unconditionally, then checked condition on subsequent calls.
+**Solution**: Check `bCondition` before recording `nWaitStartTime`. If condition is TRUE on first call, complete immediately (return TRUE, no wait started). This was caught during spec review v2.
+
+### 13. Wait Misuse Must Auto-Fail, Not Return TRUE
+
+**Symptom**: Calling WaitForTime after WaitForCondition (or vice versa) could let the test pass without actually waiting.
+**Cause**: Original design returned TRUE on misuse (bail out safely), which lets the test body proceed and potentially pass — a false green.
+**Solution**: Wait misuse now calls `SetTestFailed(Type_WAIT_MISUSE, ...)` with full bookkeeping and returns FALSE. The test always goes red on misuse. Caught during spec review v3.
 
 ---
 

@@ -1,7 +1,7 @@
 # Execution Plan
 
-**Date**: 2026-02-19
-**Status**: Complete — All phases done (1, 2, 3)
+**Date**: 2026-05-21
+**Status**: Phase 4 (Timed Test Suite) implemented, pending XAE verification
 **Purpose**: Single, value-ordered sequence of development phases. Open this file and know exactly what to build next.
 
 ---
@@ -23,13 +23,25 @@
 | Phase 2 | FB_AssertResultStatic, FB_AssertArrayResultStatic, FB_xUnitXmlPublisher, FB_AdsTestResultLogger EXTENDS FB_BaseStatic; overflow/error/completion traces; dead-code typo fix in GetDetectionCountThisCycle | BREADCRUMBS.md |
 | Phase 3 | Centralized assert failure tracing in LogAssertFailure; duration in pass/fail; suite completion summary with counts | BREADCRUMBS.md |
 
-**Current state**: 7 FBs extended, all phases complete, structured logging pipeline fully active
+| Phase 4 | FB_TimedTestSuite — real-time elapsed testing (TEST_TIMED, TEST_TIMED_ORDERED, WaitForTime, WaitForCondition, WaitTimedOut, GetTimedTestResult); 3 new DUTs; Type_TIMEOUT + Type_WAIT_MISUSE assertion types; SetTestFailed widened to INTERNAL | [timed-test-suite-design.md](./superpowers/specs/2026-05-20-timed-test-suite-design.md) |
+
+**Current state**: 8 FBs (7 extended + 1 new), Phase 4 code complete on `feat/timed-test-suite`, pending XAE build verification
 
 ---
 
 ## What to Build Next
 
-### Phase 4: Per-Cycle Test Throttling (Proposed)
+### Phase 4a: Timed Test Suite Verification and Level 1 Tests
+
+**Value**: High | **Effort**: Small | **Prerequisites**: Phase 4 code complete (branch `feat/timed-test-suite`)
+**Status**: Next up
+
+1. Open TcUnit.sln in XAE, build, verify clean compilation
+2. Write Level 1 green-path tests in TwinCAT_Tests: `FB_TimedSuiteGreenPathTests EXTENDS FB_TimedTestSuite` with short real-time waits (T#1S, T#2S)
+3. Recompile TcUnit as library, bump version, install, update consumer plcproj references
+4. Optionally: write Level 2 verifier suite (local-only, red run expected — see spec for mechanism)
+
+### Phase 5: Per-Cycle Test Throttling (Proposed)
 
 **Value**: High | **Effort**: Medium | **Prerequisites**: None (Phases 1-3 complete)
 **Status**: Brainstorming — see OPEN_DECISIONS.md decision #4
@@ -123,7 +135,12 @@ Phase 1: Base Integration (FB_TestSuite, FB_TcUnitRunner)  [DONE]
 Phase 2:        Phase 3:
 Extend to       Enrich Test
 Remaining FBs   Result Logging [DONE]
-[DONE]
+[DONE]          │
+                ▼
+            Phase 4: Timed Test Suite [CODE COMPLETE]
+                │
+                ▼
+            Phase 4a: XAE Verification + Level 1 Tests [NEXT]
 ```
 
 ---
