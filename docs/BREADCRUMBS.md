@@ -69,11 +69,11 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 **Cause**: `SetTestFailed` was `METHOD PRIVATE` on FB_TestSuite, inaccessible to subclasses.
 **Solution**: Changed to `METHOD INTERNAL` (accessible within same library). `SetTestFinished` and `CalculateAndSetNumberOfAssertsForTest` were already INTERNAL. The safety timeout path must call all three in sequence to replicate the full `TEST_FINISHED()` bookkeeping.
 
-### 11. _nActiveTimedTestIdx Stale After Final Test Method
+### 11. _nActiveTimedTestIdx Can Leak Across Test Methods
 
-**Symptom**: A wait call after the last test method in a scan could bind to the wrong test.
-**Cause**: `_nActiveTimedTestIdx` is reset to 0 at the START of each `TEST_TIMED`/`TEST_TIMED_ORDERED` call, but retains the last test's index after the final test method returns.
-**Solution**: Documented as undefined behavior. Wait methods must only be called inside `IF TEST_TIMED(...) THEN ... END_IF` blocks. The context check (`idx = 0`) is best-effort, not a guarantee.
+**Symptom**: `WaitForTime()` or `WaitForCondition()` called outside a valid timed-test body can bind to the previous timed test instead of tripping the "no active timed context" guard.
+**Cause**: `_nActiveTimedTestIdx` is reset to 0 only at the START of each `TEST_TIMED` / `TEST_TIMED_ORDERED` call, then left populated after the timed test body returns. After the final timed test method in a scan, the last index can survive long enough for a stray wait call to reuse it.
+**Solution**: Treat this as a real hardening issue, not just a caller contract. The next code pass should clear or invalidate timed context on exit, or otherwise give wait helpers a stronger notion of "active timed test" than a nonzero index alone. The current `idx = 0` check is only best-effort.
 
 ### 12. WaitForCondition Must Check Condition BEFORE Starting Wait
 
@@ -86,6 +86,18 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 **Symptom**: Calling WaitForTime after WaitForCondition (or vice versa) could let the test pass without actually waiting.
 **Cause**: Original design returned TRUE on misuse (bail out safely), which lets the test body proceed and potentially pass — a false green.
 **Solution**: Wait misuse now calls `SetTestFailed(Type_WAIT_MISUSE, ...)` with full bookkeeping and returns FALSE. The test always goes red on misuse. Caught during spec review v3.
+
+### 14. GetTimedTestResult Must Normalize TestName Like TEST()/TEST_ORDERED()
+
+**Symptom**: `GetTimedTestResult(' My Test ')` can return a zeroed result even when the timed test exists.
+**Cause**: Timed test registration paths trim names before calling `AddTest()`, but `GetTimedTestResult()` currently looks up the raw input string.
+**Solution**: Apply the same `F_LTrim(F_RTrim(...))` normalization inside `GetTimedTestResult()` before `_FindTestIndex()`. Any public verifier-facing lookup should match TcUnit's registration behavior exactly.
+
+### 15. Timed Suite Landed Before Validation Coverage
+
+**Symptom**: A substantial new execution path exists without matching Level 1 / Level 2 validation committed alongside it.
+**Cause**: The feature landed across seven recent implementation commits before XAE verification and timed-suite tests were written.
+**Solution**: The immediate next phase is: harden the two audit findings first, then do XAE build verification, then add green-path timed tests. Treat external verifier coverage as follow-on work, not as implied by the implementation landing.
 
 ---
 

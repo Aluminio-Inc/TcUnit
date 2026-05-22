@@ -1,7 +1,7 @@
 # Execution Plan
 
 **Date**: 2026-05-21
-**Status**: Phase 4 (Timed Test Suite) implemented, pending XAE verification
+**Status**: Phase 4 implemented and audited; pre-verification hardening still pending
 **Purpose**: Single, value-ordered sequence of development phases. Open this file and know exactly what to build next.
 
 ---
@@ -25,16 +25,30 @@
 
 | Phase 4 | FB_TimedTestSuite — real-time elapsed testing (TEST_TIMED, TEST_TIMED_ORDERED, WaitForTime, WaitForCondition, WaitTimedOut, GetTimedTestResult); 3 new DUTs; Type_TIMEOUT + Type_WAIT_MISUSE assertion types; SetTestFailed widened to INTERNAL | [timed-test-suite-design.md](./superpowers/specs/2026-05-20-timed-test-suite-design.md) |
 
-**Current state**: 8 FBs (7 extended + 1 new), Phase 4 code complete on `feat/timed-test-suite`, pending XAE build verification
+**Current state**: 8 FBs (7 extended + 1 new), Phase 4 code landed on `feat/timed-test-suite`, and a seven-commit audit identified two immediate hardening fixes before XAE verification: active timed-context lifecycle and `GetTimedTestResult()` name normalization.
 
 ---
 
 ## What to Build Next
 
-### Phase 4a: Timed Test Suite Verification and Level 1 Tests
+### Phase 4a: Timed Test Suite Hardening from Audit
 
 **Value**: High | **Effort**: Small | **Prerequisites**: Phase 4 code complete (branch `feat/timed-test-suite`)
 **Status**: Next up
+
+1. Fix `_nActiveTimedTestIdx` lifecycle so out-of-context wait calls cannot reuse the previous timed test's state after the final timed test method in a scan
+2. Normalize `GetTimedTestResult(TestName)` with the same trim behavior used by `TEST()`, `TEST_ORDERED()`, and `TEST_TIMED()`
+3. Re-review wait-context assumptions after the code change and update BREADCRUMBS/PROJECT_STATE if the implementation strategy changes
+
+**Acceptance**:
+- Out-of-context waits do not bind to stale timed state
+- `GetTimedTestResult(' padded name ')` resolves the same test as the registration paths
+- Repo tracking docs reflect the hardened behavior accurately
+
+### Phase 4b: Timed Test Suite Verification and Level 1 Tests
+
+**Value**: High | **Effort**: Small | **Prerequisites**: Phase 4a complete
+**Status**: After Phase 4a
 
 1. Open TcUnit.sln in XAE, build, verify clean compilation
 2. Write Level 1 green-path tests in TwinCAT_Tests: `FB_TimedSuiteGreenPathTests EXTENDS FB_TimedTestSuite` with short real-time waits (T#1S, T#2S)
@@ -140,7 +154,10 @@ Remaining FBs   Result Logging [DONE]
             Phase 4: Timed Test Suite [CODE COMPLETE]
                 │
                 ▼
-            Phase 4a: XAE Verification + Level 1 Tests [NEXT]
+            Phase 4a: Hardening from Audit [NEXT]
+                │
+                ▼
+            Phase 4b: XAE Verification + Level 1 Tests
 ```
 
 ---
@@ -162,6 +179,8 @@ Remaining FBs   Result Logging [DONE]
 | Phase 1 | High | Small | Iterative | Done |
 | Phase 2 | Medium | Small | Iterative | Done |
 | Phase 3 | High | Medium | Iterative | Done |
+| Phase 4a | High | Small | Iterative | Next |
+| Phase 4b | High | Small | Iterative | After 4a |
 
 ---
 
