@@ -12,7 +12,7 @@ Decisions that shape or block project work. Capture decisions as soon as they ar
 | 2 | Should InstancePath in FB_TestSuite be deleted or remain commented out? | A) Delete entirely; B) Keep commented for reference | Phase 1 cleanup | Non-blocking |
 | 3 | Should passing assertions also be traced (Info severity) for full audit trails? | A) Add LogAssertSuccess to I_AssertMessageFormatter; B) Add a pass/fail parameter to LogAssertFailure; C) Leave as-is, only trace failures | Future | Non-blocking |
 | 4 | Should TcUnit support per-cycle test throttling to prevent cycle overruns with heavy test suites? | A) Add throttling to FB_TestSuite; B) Add a new `RUN_THROTTLED` entry point; C) Leave as-is, consumers split suites | Scaling | Non-blocking |
-| 5 | Should TcUnit support suite tagging / selective execution? | A) Tag property on FB_TestSuite + filter param on RUN; B) Named test groups in GVL; C) Leave to consumers (ExcludeFromBuild) | Scaling | Non-blocking |
+| ~~5~~ | ~~Should TcUnit support suite tagging / selective execution?~~ | Decided: Option A variant (SetTag + RUN(sTag)), bundled with multi-task execution — see ADR-004 | Scaling | Decided 2026-07-16 |
 | 6 | Should FB_TcUnitRunner adaptively throttle based on cycle time usage? | A) Monitor PlcTaskSystemInfo.LastExecTime, skip suites when near limit; B) Leave to consumers | Scaling | Non-blocking |
 | 7 | Should FB_TcUnitRunner stagger suite warm-up across cycles? | A) Init-phase that calls one suite per cycle before main execution; B) Leave as-is (all suites active from cycle 1) | Scaling | Non-blocking |
 | 8 | Should FB_TestSuite support a per-suite MaxTestsPerCycle property? | A) Add property with windowed method execution; B) Global-only throttling (Decision #4); C) Leave as-is | Scaling | Non-blocking |
@@ -247,6 +247,34 @@ Resolved decisions in numbered ADR (Architecture Decision Record) format. Never 
 **Rationale**: All 4 FBs have error conditions worth tracing. The pattern is proven (3 FBs already extended in Phase 1). The effort is minimal (EXTENDS + TraceWithSeverity calls). Existing ADS logging is unchanged (traces are additive). This brings the total to 7/7 core FBs with structured logging capability.
 
 **Consequences/gaps**: All core TcUnit FBs now depend on the Base library. This is acceptable for a local fork. Memory overhead per FB instance is the same as Phase 1 (BaseConfiguration, BaseStatus structs from FB_BaseStatic).
+
+### ADR-004: Suite Tagging via SetTag + Multi-Task Parallel Execution
+
+**Date**: 2026-07-16 | **Status**: Decided (design approved; implementation after Phase 4a/4b)
+
+**Context**: Consumers need (a) selective suite execution without recompiling (Decision #5) and
+(b) parallel suite execution across multiple PLC tasks to spread load across cores. TcUnit's
+single-global-state architecture (`GVL_TcUnit`) supports exactly one executing task today.
+
+**Options considered**:
+1. Tag property + `RUN(sTag)` filter, suites tagged from the owning PRG via `SetTag()` — tagging doubles as the multi-task partitioning mechanism.
+2. Split suites across multiple PLC projects (one per task) — works today with zero library changes, but pushes structure churn and result merging to every consumer.
+3. Throttling only (Decisions #4/#8) — bounds cycle load but provides no parallelism.
+
+**Decision**: Option 1 — `FB_TestSuite.SetTag()` from the owning PRG + optional `sTag` on
+`RUN()`/`RUN_IN_SEQUENCE()`, combined with per-task partitioning of `GVL_TcUnit` state keyed by
+`GETCURTASKINDEXEX()`, suite ownership claiming with loud conflict traces, and per-task xUnit
+output files. Full design: [2026-07-16-multitask-tagged-execution-design.md](./superpowers/specs/2026-07-16-multitask-tagged-execution-design.md).
+
+**Rationale**: Tagging and multi-task support solve each other — suites cannot self-detect their
+home task (FB_init runs outside task context), so explicit tags from the owning PRG are the
+partitioning mechanism, and the same tags provide single-task selective execution. Test-author
+APIs are untouched; single-task plain `RUN()` behavior is byte-identical (backward compat proof =
+existing verifier stays green).
+
+**Consequences/gaps**: ~40-50 mechanical `GVL_TcUnit` reference changes; memory footprint scales
+with `MaxNumberOfTestTasks` (GPL-tunable); rollout gated on a TwinCATBase ring-buffer
+multi-writer-safety audit; Decisions #4/#8 (throttling) remain open and complementary.
 
 ---
 
