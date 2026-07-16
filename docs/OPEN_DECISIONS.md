@@ -12,7 +12,7 @@ Decisions that shape or block project work. Capture decisions as soon as they ar
 | 2 | Should InstancePath in FB_TestSuite be deleted or remain commented out? | A) Delete entirely; B) Keep commented for reference | Phase 1 cleanup | Non-blocking |
 | 3 | Should passing assertions also be traced (Info severity) for full audit trails? | A) Add LogAssertSuccess to I_AssertMessageFormatter; B) Add a pass/fail parameter to LogAssertFailure; C) Leave as-is, only trace failures | Future | Non-blocking |
 | 4 | Should TcUnit support per-cycle test throttling to prevent cycle overruns with heavy test suites? | A) Add throttling to FB_TestSuite; B) Add a new `RUN_THROTTLED` entry point; C) Leave as-is, consumers split suites | Scaling | Non-blocking |
-| ~~5~~ | ~~Should TcUnit support suite tagging / selective execution?~~ | Decided: Option A variant (SetTag + RUN(sTag)), bundled with multi-task execution — see ADR-004 | Scaling | Decided 2026-07-16 |
+| ~~5~~ | ~~Should TcUnit support suite tagging / selective execution?~~ | Decided: tagged selection + multi-task execution (ADR-004), with coordinated immutable runtime mechanics (ADR-005) | Scaling | Decided 2026-07-16 |
 | 6 | Should FB_TcUnitRunner adaptively throttle based on cycle time usage? | A) Monitor PlcTaskSystemInfo.LastExecTime, skip suites when near limit; B) Leave to consumers | Scaling | Non-blocking |
 | 7 | Should FB_TcUnitRunner stagger suite warm-up across cycles? | A) Init-phase that calls one suite per cycle before main execution; B) Leave as-is (all suites active from cycle 1) | Scaling | Non-blocking |
 | 8 | Should FB_TestSuite support a per-suite MaxTestsPerCycle property? | A) Add property with windowed method execution; B) Global-only throttling (Decision #4); C) Leave as-is | Scaling | Non-blocking |
@@ -250,7 +250,7 @@ Resolved decisions in numbered ADR (Architecture Decision Record) format. Never 
 
 ### ADR-004: Suite Tagging via SetTag + Multi-Task Parallel Execution
 
-**Date**: 2026-07-16 | **Status**: Decided (design approved; implementation after Phase 4a/4b)
+**Date**: 2026-07-16 | **Status**: Decided (high-level direction; runtime mechanics refined by ADR-005)
 
 **Context**: Consumers need (a) selective suite execution without recompiling (Decision #5) and
 (b) parallel suite execution across multiple PLC tasks to spread load across cores. TcUnit's
@@ -273,8 +273,73 @@ APIs are untouched; single-task plain `RUN()` behavior is byte-identical (backwa
 existing verifier stays green).
 
 **Consequences/gaps**: ~40-50 mechanical `GVL_TcUnit` reference changes; memory footprint scales
-with `MaxNumberOfTestTasks` (GPL-tunable); rollout gated on a TwinCATBase ring-buffer
+with `MaxNumberOfTestTasks` (GVL-parameter-tunable); rollout gated on a TwinCATBase ring-buffer
 multi-writer-safety audit; Decisions #4/#8 (throttling) remain open and complementary.
+
+**Subsequent refinement**: Post-decision review found that raw PLC task indices are sparse rather
+than compact TcUnit slots, runtime suite claiming is a cross-task check/set race, cyclic tag writes
+race with tag readers, per-runner results would replicate a very large fixed snapshot, and tag-only
+xUnit filenames do not provide a safe completion/merge contract. ADR-005 retains ADR-004's
+high-level choice while replacing those runtime mechanics. The original consequences estimate is
+preserved here as decision history; the revised spec contains the corrected scope and memory model.
+
+### ADR-005: Coordinated Registration, Immutable Execution Plans, and Central Reporting
+
+**Date**: 2026-07-16 | **Status**: Decided (refines ADR-004 before implementation)
+
+**Context**: ADR-004 correctly chose suite tagging and per-task state, but its initial runtime
+mechanics were unsafe or incomplete for TwinCAT multitasking. `GETCURTASKINDEXEX()` returns a raw
+PLC task index, not a compact count of TcUnit tasks. `SetTag()` writing a `STRING` while multiple
+runners read it violates the cross-task synchronization contract. Checking `OwnerTaskIndex = 0`
+and then assigning it is not atomic. The existing result/logging FBs still iterate all globally
+registered suites, and placing one full result snapshot in every runner would multiply tens of MiB
+per task. Finally, independent tag-named xUnit writers can collide, leave stale shards, and provide
+no authoritative all-shards-complete signal.
+
+**Options considered**:
+1. Keep direct raw-index arrays and runtime claiming, then add locks around each tag/owner access.
+   This retains execution-path synchronization, wastes slots for sparse indices, and still
+   duplicates result/report state.
+2. Map raw tasks to compact slots, configure suites/runners once under a coordinator, freeze
+   immutable per-task plans, execute without locks, and centrally publish per-task shards plus a
+   manifest after all suite state is immutable.
+3. Avoid shared-library multitasking and require one PLC/library project per test task. This is safe
+   but recreates the consumer structure/report-merging burden ADR-004 was intended to remove.
+
+**Decision**: Option 2.
+
+- `MaxNumberOfTestTasks` is a capacity with a backward-compatible default of 1.
+- A coordinator synchronizes only registration, configuration sealing, and one-shot completion
+  publication.
+- Positive raw PLC task indices map to compact TcUnit slots.
+- `SetTag()` captures the caller's raw task ownership once; identical repeats are no-ops and
+  mutation is rejected.
+- Ownership and selection are separate: two tasks may use the same normalized selection tag, while
+  each suite still has exactly one owner and shard filenames include raw task identity.
+- Each runner latches tag and mode once. When all expected runners register, the coordinator
+  validates the topology and builds immutable suite-index plans.
+- Test execution is lock-free and task-owned after sealing.
+- Detailed suite/test state remains in suite instances; the complete fixed result snapshot is not
+  replicated per task.
+- One report coordinator publishes deterministic task/tag shards and writes an authoritative
+  manifest last. Configuration/infrastructure errors fail closed and become machine-readable
+  failed framework results.
+
+Full design:
+[2026-07-16-multitask-tagged-execution-design.md](./superpowers/specs/2026-07-16-multitask-tagged-execution-design.md).
+
+**Rationale**: TwinCAT's multitask safety rules favor a short synchronized configuration phase and
+task-exclusive mutable state during cyclic execution. Immutable plans eliminate runtime ownership
+races and make both parallel and sequential runners deterministic. Compact slots preserve the
+meaning of task capacity. Central reporting avoids concurrent file access, duplicate large result
+buffers, output collisions, and ambiguous completion. A machine-readable status/manifest contract
+prevents false-green empty or partial runs.
+
+**Consequences/gaps**: The implementation is a deliberate runner/reporting architecture change,
+not a 40-50-site mechanical edit. It requires a coordinator, task contexts, status/error DUTs,
+plan-driven runner refactors, a memory-safe reporting path, a committed multi-task verifier, and a
+consumer symbol/API audit. Multi-task production enablement remains gated on TwinCATBase
+multi-writer safety. Per-test execution throttling remains separate and complementary.
 
 ---
 

@@ -1,7 +1,7 @@
 # Execution Plan
 
-**Date**: 2026-05-21
-**Status**: Phase 4 implemented and audited; pre-verification hardening still pending
+**Date**: 2026-07-16
+**Status**: Phase 4 implemented and audited; hardening/verification remain next, followed by the approved multi-task tagged-execution architecture
 **Purpose**: Single, value-ordered sequence of development phases. Open this file and know exactly what to build next.
 
 ---
@@ -55,7 +55,37 @@
 3. Recompile TcUnit as library, bump version, install, update consumer plcproj references
 4. Optionally: write Level 2 verifier suite (local-only, red run expected — see spec for mechanism)
 
-### Phase 5: Per-Cycle Test Throttling (Proposed)
+### Phase 5: Multi-Task Tagged Execution
+
+**Value**: High | **Effort**: Large | **Prerequisites**: Phase 4a/4b, sequential-runner regression, TwinCATBase multi-writer audit before production enablement
+**Status**: Revised design approved by ADR-004/ADR-005; implementation after Phase 4b
+
+Implement selective suite tags and safe multi-task execution using compact raw-task-to-slot
+registration, coordinator-sealed immutable execution plans, task-owned mutable contexts,
+machine-readable failure/status, memory-safe result handling, centrally published per-task xUnit
+shards, and an authoritative manifest.
+
+Detailed design:
+[2026-07-16-multitask-tagged-execution-design.md](./superpowers/specs/2026-07-16-multitask-tagged-execution-design.md)
+
+Implementation sequence:
+
+1. Fix and commit `RUN_IN_SEQUENCE` completion coverage and correct xUnit count semantics
+2. Run the XAE compile/memory/ABI spike
+3. Add coordinator, status/error DUTs, compact task registration, and task contexts
+4. Migrate every mutable global/function-static reference while keeping one-task verifier green
+5. Add immutable suite assignment/planning and single-task tagged selection
+6. Refactor both run modes over the common plan and enable multi-task execution
+7. Replace per-task full result snapshots with immutable suite readers and central shard/manifest reporting
+8. Add committed two-task verifier, negative fault injection, static analysis, stress, memory, cycle-time, and core-placement evidence
+9. Qualify all Photara consumers, update docs, bump version, and rebuild/install the library
+
+**Acceptance**: All acceptance gates in the revised design spec are mandatory. In particular, no
+configuration error may produce a green run, no suite may execute more than once, no task may touch
+another task's mutable execution context, task capacity must support sparse raw task indices, the
+default memory delta must be measured/approved, and downstream merging must consume the manifest.
+
+### Phase 6: Per-Cycle Test Throttling (Proposed)
 
 **Value**: High | **Effort**: Medium | **Prerequisites**: None (Phases 1-3 complete)
 **Status**: Brainstorming — see OPEN_DECISIONS.md decision #4
@@ -70,19 +100,19 @@
 
 **Related scaling proposals** (all in OPEN_DECISIONS.md):
 - **#4** Per-cycle test throttling (global `RUN_THROTTLED` entry point)
-- **#5** Suite tagging / selective execution (`RUN(sTag := 'sequencer')`)
+- **#5** Suite tagging / selective execution — decided by ADR-004 and refined by ADR-005; Phase 5
 - **#6** Adaptive cycle-time throttling (monitor `PlcTaskSystemInfo.LastExecTime`, auto-back-off)
 - **#7** Staggered suite warm-up (init-phase calls one suite per cycle before main execution)
 - **#8** Per-suite `MaxTestsPerCycle` property (heavy suites self-throttle, lightweight suites unaffected)
 - **#9** Chunked result reporting (spread ADS messages and result aggregation across cycles)
 
 These can be implemented independently. Rough priority by value:
-1. **#5 (tagging)** + **#8 (per-suite throttle)** — highest practical impact, most likely to be adopted
+1. **#8 (per-suite throttle)** — highest remaining practical impact after Phase 5
 2. **#6 (adaptive throttle)** — elegant but depends on `PlcTaskSystemInfo` access pattern
-3. **#7 (warm-up)** + **#9 (chunked reporting)** — smooth edges, lower priority
+3. **#7 (warm-up)** + remaining **#9 (chunked ADS/result details)** — smooth edges, lower priority
 4. **#4 (global RUN_THROTTLED)** — may be superseded by #8 if per-suite is chosen
 
-**Decision required before implementation**: OPEN_DECISIONS.md #4–#9
+**Decision required before implementation**: OPEN_DECISIONS.md #4 and #6–#9. Decision #5 is complete.
 
 ---
 
@@ -158,6 +188,12 @@ Remaining FBs   Result Logging [DONE]
                 │
                 ▼
             Phase 4b: XAE Verification + Level 1 Tests
+                │
+                ▼
+            Phase 5: Multi-Task Tagged Execution
+                │
+                ▼
+            Phase 6: Per-Cycle Test Throttling [PROPOSED]
 ```
 
 ---
@@ -181,6 +217,8 @@ Remaining FBs   Result Logging [DONE]
 | Phase 3 | High | Medium | Iterative | Done |
 | Phase 4a | High | Small | Iterative | Next |
 | Phase 4b | High | Small | Iterative | After 4a |
+| Phase 5 | High | Large | Staged/verification-gated | After 4b |
+| Phase 6 | High | Medium | TBD after decision #4/#8 | Proposed |
 
 ---
 

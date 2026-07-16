@@ -90,6 +90,7 @@ Project uses RepoBaseDocs. Key docs in `docs/`:
 - `PROJECT_STATE.md` — Current status, what's done/active/blocked
 - `EXECUTION_PLAN.md` — Phase-ordered work sequence
 - `BREADCRUMBS.md` — Gotchas, architecture patterns, file map, session history
-- `OPEN_DECISIONS.md` — Unresolved design decisions (#4-#9: throttling, tagging, adaptive)
+- `OPEN_DECISIONS.md` — Unresolved scaling decisions (#4 and #6-#9) plus ADR-004/ADR-005 for decided multi-task tagged execution
+- `docs/superpowers/specs/2026-07-16-multitask-tagged-execution-design.md` — Revised Phase 5 design: coordinated registration, compact task slots, immutable execution plans, task-owned state, and manifest-based reporting
 
 Read order for new sessions: PROJECT_SPEC → PROJECT_STATE → EXECUTION_PLAN → BREADCRUMBS.

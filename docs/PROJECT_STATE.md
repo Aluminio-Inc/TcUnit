@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-05-21_
+_Last updated: 2026-07-16_
 
 ---
 
@@ -12,7 +12,7 @@ TcUnit is an open-source unit testing framework for TwinCAT 3 (IEC 61131-3 Struc
 
 ## Current State Summary
 
-7 FBs extended with FB_BaseStatic, centralized assert failure tracing in LogAssertFailure, test lifecycle and run lifecycle tracing, Phases 1-3 complete. Phase 4 (FB_TimedTestSuite) is implemented and spec-reviewed on `feat/timed-test-suite`, but a post-implementation audit found two follow-up hardening items plus missing validation coverage before XAE sign-off.
+7 FBs extended with FB_BaseStatic, centralized assert failure tracing in LogAssertFailure, test lifecycle and run lifecycle tracing, Phases 1-3 complete. Phase 4 (FB_TimedTestSuite) is implemented and spec-reviewed on `feat/timed-test-suite`, but a post-implementation audit found two follow-up hardening items plus missing validation coverage before XAE sign-off. Phase 5 multi-task tagged execution is now decided by ADR-004/ADR-005 and has a revised implementation-grade design; implementation remains gated behind Phase 4a/4b and prerequisite concurrency/runner verification.
 
 ---
 
@@ -37,6 +37,8 @@ TcUnit is an open-source unit testing framework for TwinCAT 3 (IEC 61131-3 Struc
 
 ## Planned (Proposed)
 
+- **Phase 5: Multi-Task Tagged Execution** — approved high-level direction plus coordinated runtime refinement: compact raw-task-to-slot mapping, immutable suite plans, task-owned state, fail-closed status, bounded-memory reporting, per-task xUnit shards, and an authoritative manifest. Design: [2026-07-16-multitask-tagged-execution-design.md](./superpowers/specs/2026-07-16-multitask-tagged-execution-design.md)
+- **Phase 6: Per-Cycle Test Throttling** — remains proposed under OPEN_DECISIONS #4/#8 after multi-task support
 - Verifier reliability and modernization plan for `TcUnit-Verifier_DotNet`: [VERIFIER_IMPROVEMENT_PLAN.md](./VERIFIER_IMPROVEMENT_PLAN.md)
 
 ---
@@ -74,6 +76,9 @@ _Nothing blocked._
 - `FB_TimedTestSuite._nActiveTimedTestIdx` is only a best-effort context guard today; out-of-context waits after the final timed test in a scan can still bind to stale state
 - `FB_TimedTestSuite.GetTimedTestResult()` does not yet normalize whitespace on `TestName`, unlike `TEST()`, `TEST_ORDERED()`, and `TEST_TIMED()`
 - No TwinCAT XAE build verification or Level 1 timed-suite validation has been recorded yet for Phase 4
+- `RUN_IN_SEQUENCE()` has no active committed verifier path; its persistent completion semantics must be regression-tested before the plan-driven runner refactor
+- Multi-task production execution is gated on a TwinCATBase ring-buffer multi-writer/one-reader safety audit and stress test
+- The current fixed `ST_TestSuiteResults` snapshot is too large to replicate per task; Phase 5 must use the memory-safe reporting architecture in ADR-005
 
 ---
 

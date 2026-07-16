@@ -1,6 +1,6 @@
 # Development Breadcrumbs
 
-**Last Updated**: 2026-05-21
+**Last Updated**: 2026-07-16
 
 Hard-won knowledge, gotchas, and patterns that save future agents from repeating mistakes.
 
@@ -98,6 +98,36 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 **Symptom**: A substantial new execution path exists without matching Level 1 / Level 2 validation committed alongside it.
 **Cause**: The feature landed across seven recent implementation commits before XAE verification and timed-suite tests were written.
 **Solution**: The immediate next phase is: harden the two audit findings first, then do XAE build verification, then add green-path timed tests. Treat external verifier coverage as follow-on work, not as implied by the implementation landing.
+
+### 16. GETCURTASKINDEXEX Is a Raw Task Index, Not a TcUnit Slot
+
+**Symptom**: A project configured for one TcUnit test task fails when that task's PLC index is 3 or 5, or a two-task project indexes beyond `MaxNumberOfTestTasks := 2`.
+**Cause**: `GETCURTASKINDEXEX()` returns `-1`, `0`, or the actual 1-based PLC task index. Other Main/Log/Motion tasks create gaps; the value is not a compact count of test tasks.
+**Solution**: Keep the raw value as `DINT`, reject `<= 0` before conversion, and map positive raw indices to compact TcUnit slots under the Phase 5 coordinator. `MaxNumberOfTestTasks` is a capacity, never a raw-index bound.
+
+### 17. Multi-Task Configuration Must Freeze Before Suite Execution
+
+**Symptom**: A late tag is never picked up, a runner finishes with zero suites, a tag string tears while another task reads it, or two tasks both claim and execute one suite.
+**Cause**: Cyclic `SetTag()` writes plus runtime scan/check/set claiming mix configuration mutation with concurrent execution.
+**Solution**: `SetTag()` captures owner raw task and normalized tag once under coordinator registration. Runners register/latch once. When all expected tasks arrive, validate the entire topology, build immutable registry-index plans, and seal. Execute only after a valid seal and take no coordinator lock in test bodies/assertions.
+
+### 18. Never Put the Full Result Snapshot in Every Task Runner
+
+**Symptom**: Enabling four task slots adds hundreds of MiB of PLC memory even before suite-instance overhead.
+**Cause**: `ST_TestSuiteResults` reserves 1,000 suites × 100 tests, and each test record contains three 255-character strings. `FB_TcUnitRunner` currently contains `FB_TestResults`; making an array of runners would replicate that fixed snapshot.
+**Solution**: Detailed truth remains in the suite/test instances. After all owner tasks finish, one report coordinator reads immutable suite state and publishes all shards. Keep at most one compatibility snapshot if a consumer audit proves it is needed. Measure `SIZEOF`/PLC memory in the XAE spike.
+
+### 19. Method VAR Does Not Persist Across Cyclic Calls
+
+**Symptom**: Sequential run completion never latches even though the last suite finished.
+**Cause**: TwinCAT reinitializes normal method variables on every call. The current sequential runner declares `NumberOfTestSuitesFinished` as method `VAR`, while only the suite cursor/timer are `VAR_INST`; the final-suite branch does not make the local count equal the total.
+**Solution**: Add a committed sequential regression before Phase 5, then use an explicit persistent plan cursor/state machine. State spanning scans belongs on the FB/context or in `VAR_INST`.
+
+### 20. A File Glob Is Not a Distributed-Run Completion Protocol
+
+**Symptom**: CI merges stale shards, reads a partial file, misses a slow task, or treats a configuration-conflict empty shard as green.
+**Cause**: Independent tag-only filenames provide neither uniqueness nor an all-writers-complete signal.
+**Solution**: Shard names include normalized tag plus raw task index. One report coordinator writes temporary shards, closes/replaces them, and writes an authoritative manifest last. Downstream tooling merges only manifest-listed shards. Infrastructure/configuration errors publish a failed framework testcase when possible.
 
 ---
 
