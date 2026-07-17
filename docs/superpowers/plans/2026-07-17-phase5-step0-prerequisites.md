@@ -2,55 +2,87 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Complete the Step-0 prerequisites of the multi-task tagged execution design: harden FB_TimedTestSuite (Phase 4a), fix the RUN_IN_SEQUENCE completion latch, correct xUnit count semantics, and prove all three with a committed red-green verification campaign (Phase 4b), ending with library 2026.7.17.1 installed and consumed by TwinCAT_Tests.
+**Revision 2** — incorporates the 2026-07-17 plan review: release tag gated behind GREEN evidence and verifier run; explicit xUnit path override with freshness check; UDINT aggregate counts; ordered-timed and out-of-context WaitForCondition/WaitTimedOut coverage; single-suite/empty-suite/delay/abort sequential coverage; XML semantic verifier script replacing manual table checks; all-passing regression campaign split from the intentional-failure counts campaign; SIZEOF/compile evidence; dirty-repo preflight; Parameters-block merge; no forced commit attribution.
 
-**Architecture:** Test artifacts are written first in TwinCAT_Tests (which already runs `RUN_IN_SEQUENCE()`), run RED against the currently installed TcUnit 2026.4.9.1, then the three fixes land in TcUnitFork sources, the library is rebuilt as 2026.7.17.1, and the same campaign is rerun GREEN. Verification is XAE-manual (no CLI build exists); every run step is an exact XAE procedure with expected observable values, recorded in a committed verification doc.
+**Goal:** Complete the Step-0 prerequisites of the multi-task tagged execution design: harden FB_TimedTestSuite (Phase 4a), fix the RUN_IN_SEQUENCE completion latch, correct xUnit count semantics with UDINT-wide aggregates, and prove all three with committed red-green verification campaigns, ending with library 2026.7.17.1 released only after GREEN + verifier evidence.
 
-**Tech Stack:** TwinCAT 3.1.4026.x XAE, IEC 61131-3 ST (`.TcPOU`/`.TcDUT` XML), TcUnit fork, PowerShell for canonicalization, git.
+**Architecture:** Test artifacts are written first (TwinCAT_Tests campaigns + a sequential check in TcUnit-Verifier), run RED against the installed TcUnit 2026.4.9.1, then the fixes land in TcUnitFork sources, a candidate 2026.7.17.1 is built and installed, the existing .NET verifier must pass unchanged, the GREEN campaigns must pass the XML semantic verifier script, and only then is the library binary committed and tagged. Verification is XAE-manual (no CLI build exists); every run step is an exact procedure with script-asserted expected values.
+
+**Tech Stack:** TwinCAT 3.1.4026.x XAE, IEC 61131-3 ST (`.TcPOU`/`.TcDUT` XML), TcUnit fork, PowerShell 7 for XML verification, TcUnit-Verifier_DotNet, git.
 
 ## Plan sequence context
 
-This is **Plan 1 of the Phase 5 series** (spec: `docs/superpowers/specs/2026-07-16-multitask-tagged-execution-design.md`, implementation order step 0). Later plans, in order: compile/ABI spike; status+seams+coordinator skeleton; task-context migration; planning/barriers+selective execution; reporting pipeline; multi-task verifier; consumer qualification. The TwinCATBase multi-writer audit is an **external gate** in the TwinCATBase repo — it gates production multi-task enablement, not this plan.
+This is **Plan 1 of the Phase 5 series** (spec: `docs/superpowers/specs/2026-07-16-multitask-tagged-execution-design.md`, implementation order step 0). Later plans, in order: compile/ABI spike; status+seams+coordinator skeleton; task-context migration; planning/barriers+selective execution; reporting pipeline; multi-task verifier; consumer qualification. The TwinCATBase multi-writer audit is an **external gate** in the TwinCATBase repo — it gates production multi-task enablement, not this plan. The fully .NET-automated `RUN_IN_SEQUENCE` verifier configuration lands with the verifier plan; this plan commits the sequential single-suite check (Task 4) as its committed precursor.
 
 ## Global Constraints
 
-- Every new TwinCAT object AND every new method/property gets a fresh random GUID: `python -c "import uuid; print('{' + str(uuid.uuid4()) + '}')"` — never reuse or pattern GUIDs; verify uniqueness with Grep before adding.
+- Every new TwinCAT object AND every new method gets a fresh random GUID: `python -c "import uuid; print('{' + str(uuid.uuid4()) + '}')"` — never reuse or pattern GUIDs; verify uniqueness with Grep across BOTH repos before adding.
 - ASCII only in ST string literals (no em dashes/arrows) — they corrupt UTF-8 log parsing.
 - `.TcPOU`/`.TcDUT`/`.TcGVL` files on disk are NOT built unless listed as `<Compile Include>` in the `.plcproj`; new folders need `<Folder Include>`.
-- Library version lives in TWO files that must stay in sync: `TcUnit/TcUnit/TcUnit.plcproj` `<ProjectVersion>` and `TcUnit/TcUnit/Version/Global_Version.TcGVL` `stLibVersion_TcUnit`. New version this plan: **2026.7.17.1**. Tag `TcUnit-2026.7.17.1` on the commit containing bump + `.library` binary.
+- Library version lives in TWO files that must stay in sync: `TcUnit/TcUnit/TcUnit.plcproj` `<ProjectVersion>` and `TcUnit/TcUnit/Version/Global_Version.TcGVL` `stLibVersion_TcUnit`. Candidate version this plan: **2026.7.17.1**. The tag `TcUnit-2026.7.17.1` is created ONLY in Task 13, after GREEN + verifier evidence.
 - Never use IEC reserved words (`DT`, `TIME_OF_DAY`, …) as identifiers.
 - Any `TraceWithSeverity` reachable cyclically MUST be one-shot guarded.
-- Do not remove or weaken existing assertions or public API. The only new members allowed by this plan: `FB_TimedTestSuite._GetActiveWaitContext` (PRIVATE method), two new VARs on FB_TimedTestSuite, two new DUT fields — all approved via the Phase 5 spec Step 0 scope.
-- TcUnitFork work happens on branch `feat/timed-test-suite`; TwinCAT_Tests work on new branch `feat/tcunit-step0`.
+- Do not remove or weaken existing assertions or public API. New members allowed by this plan: `FB_TimedTestSuite._GetActiveWaitContext` (PRIVATE method), two new VARs on FB_TimedTestSuite, two new DUT fields, UDINT widening of four aggregate DUT fields — all within the Phase 5 spec Step-0 scope.
+- Commit messages: first line summary + per-file `- filename:` bullets. No co-author or session metadata.
+- TcUnitFork work happens on branch `feat/timed-test-suite`; TwinCAT_Tests work on new branch `feat/tcunit-step0` created from a clean tree (Task 0 gates this).
 - XAE builds/runs are USER ACTIONS — Scott runs them; the executor prepares exact instructions and waits for reported results before proceeding.
-- `TcUnit.library` at the fork repo root is currently deleted in the working tree (pre-existing). Task 8 regenerates and commits it — do not restore or commit it before then.
+- `TcUnit.library` at the fork repo root is currently deleted in the working tree (pre-existing). It is regenerated in Task 10 and committed only in Task 13 — do not restore or commit it earlier.
+- Campaign xUnit path: `%TC_BOOTPRJPATH%tcunit_step0_xunit.xml` (resolves to `C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml` on this machine). TcUnit's default is `%TC_BOOTPRJPATH%tcunit_xunit_testresults.xml` — the campaign uses its own name so no other run can be mistaken for it.
+- **Multi-PRG registration fact** (drives all count expectations): every suite instance declared in ANY compiled PRG registers via `FB_init` at PLC start, regardless of task assignment. Suites of inactive PRGs never execute, register zero tests, and count as trivially finished. Therefore: campaign totals come only from the active PRG's suites; the verifier script asserts every non-campaign suite reports `tests="0"`; suite `id` attributes depend on opaque registration order and are never asserted.
 
 ---
 
-### Task 1: Timed-suite regression tests (TwinCAT_Tests, written first)
+### Task 0: Preflight — repo state gate
+
+**Files:**
+- Create: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md` (baseline appendix only; Task 5 fills the body)
+
+**Interfaces:**
+- Produces: recorded `git status` baselines for both repos; a clean starting tree for the TwinCAT_Tests campaign branch.
+
+- [ ] **Step 1: Record both repo states**
+
+```powershell
+cd C:\Users\scott\Documents\TcUnitFork; git status --porcelain; git log -1 --oneline
+cd C:\Users\scott\Documents\TwinCAT_Tests; git status --porcelain; git branch --show-current; git log -1 --oneline
+```
+
+Save both outputs verbatim into a "Baseline repo state" appendix section of the verification doc (create the file with just a title and this appendix; Task 5 prepends the procedure body).
+
+- [ ] **Step 2: Gate on TwinCAT_Tests cleanliness**
+
+TwinCAT_Tests is known to have uncommitted local edits including `TwinCAT_Tests.plcproj`. Do NOT stash or commit them unilaterally. Ask Scott to disposition them first (commit on their own branch, or stash with a named stash), so `feat/tcunit-step0` branches from a clean tree and this campaign's plcproj diff contains only campaign changes. STOP until the tree is clean or Scott explicitly approves branching with specific listed files left dirty (record the approval in the appendix).
+
+- [ ] **Step 3: Create the campaign branch and commit the baseline**
+
+```powershell
+cd C:\Users\scott\Documents\TwinCAT_Tests; git checkout -b feat/tcunit-step0
+cd C:\Users\scott\Documents\TcUnitFork
+git add docs/verification/2026-07-17-step0-verification.md
+git commit -m "docs(step0): record preflight repo baselines
+
+- 2026-07-17-step0-verification.md: baseline git state for TcUnitFork and TwinCAT_Tests"
+```
+
+---
+
+### Task 1: Timed unordered suite tests (TwinCAT_Tests, written first)
 
 **Files:**
 - Create: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TcUnitTests\FB_TimedSuiteGreenPathTests.TcPOU`
 
 **Interfaces:**
 - Consumes: `TcUnit.FB_TimedTestSuite` API as shipped in 2026.4.9.1: `TEST_TIMED(TestName, tSafetyTimeout)`, `WaitForTime(tDuration)`, `WaitForCondition(bCondition, tTimeout)`, `WaitTimedOut`, `GetTimedTestResult(TestName) : ST_TimedTestResult` (fields `TestName`, `bIsFinished`).
-- Produces: FB `FB_TimedSuiteGreenPathTests` with 5 tests: `Test_Wait1s`, `Test_ConditionMet`, `Test_ConditionTimeoutDetected`, `Test_PaddedNameLookup`, `Test_StaleContextGuard`. Task 2's PRG instantiates it as `TimedSuiteTests`.
+- Produces: FB `FB_TimedSuiteGreenPathTests` with 5 tests: `Test_Wait1s`, `Test_ConditionMet`, `Test_ConditionTimeoutDetected`, `Test_PaddedNameLookup`, `Test_StaleContextGuard`. Task 3's regression PRG instantiates it as `TimedSuiteTests`.
 
-- [ ] **Step 1: Create the TwinCAT_Tests branch**
-
-```powershell
-cd C:\Users\scott\Documents\TwinCAT_Tests
-git checkout -b feat/tcunit-step0
-```
-
-- [ ] **Step 2: Generate one fresh GUID**
+- [ ] **Step 1: Generate one fresh GUID**
 
 Run: `python -c "import uuid; print('{' + str(uuid.uuid4()) + '}')"`
-Then verify it is unused: Grep the printed GUID across `C:\Users\scott\Documents\TwinCAT_Tests` and `C:\Users\scott\Documents\TcUnitFork`. Expected: no matches. Use it as `<GUID-1>` below.
+Grep the printed GUID across `C:\Users\scott\Documents\TwinCAT_Tests` and `C:\Users\scott\Documents\TcUnitFork` (expected: no matches). Use as `<GUID-1>`.
 
-- [ ] **Step 3: Write the failing tests**
+- [ ] **Step 2: Write the failing tests**
 
-Create `FB_TimedSuiteGreenPathTests.TcPOU` with this exact content (substitute `<GUID-1>`):
+Create `FB_TimedSuiteGreenPathTests.TcPOU` (substitute `<GUID-1>`):
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -59,21 +91,29 @@ Create `FB_TimedSuiteGreenPathTests.TcPOU` with this exact content (substitute `
     <Declaration><![CDATA[(* Level 1 green-path and Phase 4a regression tests for TcUnit.FB_TimedTestSuite.
    Test_PaddedNameLookup and Test_StaleContextGuard are regressions for the two
    Phase 4a hardening items (GetTimedTestResult trim, stale wait context). They
-   FAIL against TcUnit 2026.4.9.1 and PASS from 2026.7.17.1. *)
+   FAIL against TcUnit 2026.4.9.1 and PASS from 2026.7.17.1.
+   The WaitTimedOut probe latch is asserted in the guard test; its defect is not
+   independently red-demonstrable (masked by the WAIT_MISUSE kill), but it routes
+   through the same _GetActiveWaitContext guard that the two red-proven probes
+   (here and in FB_TimedOrderedGreenPathTests) exercise. *)
 FUNCTION_BLOCK FB_TimedSuiteGreenPathTests EXTENDS TcUnit.FB_TimedTestSuite
 VAR
     nConditionCounter             : UDINT;
-    bOutOfContextWaitReturnedTrue : BOOL;
     bBareWaitReturn               : BOOL;
+    bOutOfContextWaitReturnedTrue : BOOL;
+    bStaleWaitTimedOutObserved    : BOOL;
     stPaddedLookup                : TcUnit.ST_TimedTestResult;
 END_VAR]]></Declaration>
     <Implementation>
-      <ST><![CDATA[(* Regression probe for the stale timed-context gotcha: a wait helper called
-   before any timed test block in this scan must never bind to the previous
-   scan's context. Against 2026.4.9.1 this binds to the last block's state. *)
+      <ST><![CDATA[(* Regression probes for the stale timed-context gotcha: helpers called before
+   any timed test block in this scan must never bind to the previous scan's
+   context. Against 2026.4.9.1 both bind to the last block's state. *)
 bBareWaitReturn := WaitForTime(tDuration := T#10MS);
 IF bBareWaitReturn THEN
     bOutOfContextWaitReturnedTrue := TRUE;
+END_IF
+IF WaitTimedOut THEN
+    bStaleWaitTimedOutObserved := TRUE;
 END_IF
 
 IF TEST_TIMED(TestName := 'Test_Wait1s', tSafetyTimeout := T#10S) THEN
@@ -112,6 +152,7 @@ END_IF
 IF TEST_TIMED(TestName := 'Test_StaleContextGuard', tSafetyTimeout := T#30S) THEN
     IF WaitForCondition(bCondition := GetTimedTestResult(TestName := 'Test_Wait1s').bIsFinished, tTimeout := T#20S) THEN
         AssertFalse(Condition := bOutOfContextWaitReturnedTrue, Message := 'Out-of-context WaitForTime must never return TRUE');
+        AssertFalse(Condition := bStaleWaitTimedOutObserved, Message := 'Out-of-context WaitTimedOut must always read FALSE');
         TEST_FINISHED();
     END_IF
 END_IF]]></ST>
@@ -120,51 +161,159 @@ END_IF]]></ST>
 </TcPlcObject>
 ```
 
-Why these two are RED against 2026.4.9.1: `TEST_TIMED` in 2026.4.9.1 sets `_nActiveTimedTestIdx` before its finished-check and never clears it between scans, so the bare `WaitForTime` at the top of the body binds to the previous scan's last block (`Test_StaleContextGuard`, whose wait type is Condition) and fails it with `Type_WAIT_MISUSE` from scan 2 onward. `GetTimedTestResult` in 2026.4.9.1 does not trim, so the padded lookup never resolves, its condition wait times out, and both of its asserts fail.
+Why the regressions are RED against 2026.4.9.1: `TEST_TIMED` sets `_nActiveTimedTestIdx` before its finished-check and never clears it between scans, so the bare `WaitForTime` at the top of the body binds to the previous scan's last block (`Test_StaleContextGuard`, whose wait type is Condition) and kills it with `Type_WAIT_MISUSE` from scan 2 onward. `GetTimedTestResult` does not trim, so the padded lookup never resolves, its condition wait times out, and both of its asserts fail.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```powershell
 cd C:\Users\scott\Documents\TwinCAT_Tests
 git add TwinCAT_Tests/TwinCAT_Tests/TcUnitTests/FB_TimedSuiteGreenPathTests.TcPOU
-git commit -m "test(tcunit-step0): add timed-suite Level 1 + Phase 4a regression tests (red vs 2026.4.9.1)
+git commit -m "test(tcunit-step0): timed-suite Level 1 + Phase 4a regressions (red vs 2026.4.9.1)
 
-- FB_TimedSuiteGreenPathTests.TcPOU: 3 green-path timed tests plus padded-name and stale-context regressions
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
+- FB_TimedSuiteGreenPathTests.TcPOU: 3 green-path timed tests plus padded-name, stale-WaitForTime, and stale-WaitTimedOut probes"
 ```
 
-(The file is not yet in the plcproj — wiring happens in Task 2 with the PRG; the commit is safe because TwinCAT_Tests builds only plcproj-listed files.)
+(Unwired files are safe to commit — TwinCAT builds only plcproj-listed files; wiring lands in Task 3.)
 
 ---
 
-### Task 2: Count-semantics fixture, campaign PRG, and plcproj wiring (TwinCAT_Tests)
+### Task 2: Timed ORDERED suite tests (TwinCAT_Tests)
 
 **Files:**
-- Create: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TcUnitTests\FB_StepZeroCounts_ShouldFail.TcPOU`
-- Create: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TcUnitTests\PRG_TEST_TCUNIT_STEP0.TcPOU`
-- Modify: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests.plcproj` (Folder Include ~line 562-579 block, Compile Include ~line 21+ block, TcUnit Parameters under the PlaceholderReference at ~line 527)
+- Create: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TcUnitTests\FB_TimedOrderedGreenPathTests.TcPOU`
 
 **Interfaces:**
-- Consumes: `FB_TimedSuiteGreenPathTests` from Task 1; `TcUnit.RUN_IN_SEQUENCE()`; TcUnit `disabled_` test-name prefix (produces a skipped test).
-- Produces: PRG `PRG_TEST_TCUNIT_STEP0` with suite instances `TimedSuiteTests` and `StepZeroCounts_ShouldFail` (registration order: timed suite first). Deterministic campaign totals: 8 tests, 1 failed, 1 skipped (green run). The `_ShouldFail` suffix follows the repo's convention for suites with intentional failures.
+- Consumes: `TcUnit.FB_TimedTestSuite.TEST_TIMED_ORDERED(TestName, tSafetyTimeout)` plus the wait helpers.
+- Produces: FB `FB_TimedOrderedGreenPathTests` with 3 ordered tests `Test_Ordered1_Wait`, `Test_Ordered2_ConditionMet`, `Test_Ordered3_Guard`. Covers the `TEST_TIMED_ORDERED` context-lifecycle change and the out-of-context `WaitForCondition` path. Task 3's regression PRG instantiates it as `TimedOrderedTests`.
 
-- [ ] **Step 1: Generate two fresh GUIDs**
+- [ ] **Step 1: Generate one fresh GUID** (same command/uniqueness check). Use as `<GUID-2>`.
 
-Run `python -c "import uuid; print('{' + str(uuid.uuid4()) + '}')"` twice; Grep both across both repos (expected: no matches). Use as `<GUID-2>` and `<GUID-3>`.
-
-- [ ] **Step 2: Write the count-semantics fixture**
-
-Create `FB_StepZeroCounts_ShouldFail.TcPOU`:
+- [ ] **Step 2: Write the failing tests**
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
-  <POU Name="FB_StepZeroCounts_ShouldFail" Id="<GUID-2>" SpecialFunc="None">
+  <POU Name="FB_TimedOrderedGreenPathTests" Id="<GUID-2>" SpecialFunc="None">
+    <Declaration><![CDATA[(* Ordered timed-test coverage for TEST_TIMED_ORDERED plus the out-of-context
+   WaitForCondition regression. Against 2026.4.9.1 the bare WaitForCondition
+   probe binds Test_Ordered3_Guard's context one scan into its turn (its wait
+   type is Time, the probe is Condition) and kills it with Type_WAIT_MISUSE.
+   From 2026.7.17.1 the cycle guard rejects the probe and all 3 tests pass.
+   RED-run note: during turns 1-2 the probe sees no context (ordered blocks
+   reset it), so 2026.4.9.1 emits its unguarded out-of-context Error trace
+   repeatedly - expected noise that itself evidences the missing one-shot. *)
+FUNCTION_BLOCK FB_TimedOrderedGreenPathTests EXTENDS TcUnit.FB_TimedTestSuite
+VAR
+    nOrderedConditionCounter           : UDINT;
+    bBareConditionReturn               : BOOL;
+    bOutOfContextConditionReturnedTrue : BOOL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[bBareConditionReturn := WaitForCondition(bCondition := FALSE, tTimeout := T#50MS);
+IF bBareConditionReturn THEN
+    bOutOfContextConditionReturnedTrue := TRUE;
+END_IF
+
+IF TEST_TIMED_ORDERED(TestName := 'Test_Ordered1_Wait', tSafetyTimeout := T#10S) THEN
+    IF WaitForTime(tDuration := T#500MS) THEN
+        AssertFalse(Condition := WaitTimedOut, Message := 'Ordered time wait must not report a condition timeout');
+        TEST_FINISHED();
+    END_IF
+END_IF
+
+IF TEST_TIMED_ORDERED(TestName := 'Test_Ordered2_ConditionMet', tSafetyTimeout := T#10S) THEN
+    nOrderedConditionCounter := nOrderedConditionCounter + 1;
+    IF WaitForCondition(bCondition := (nOrderedConditionCounter >= 5), tTimeout := T#5S) THEN
+        AssertFalse(Condition := WaitTimedOut, Message := 'Ordered condition must be met before timeout');
+        TEST_FINISHED();
+    END_IF
+END_IF
+
+IF TEST_TIMED_ORDERED(TestName := 'Test_Ordered3_Guard', tSafetyTimeout := T#20S) THEN
+    IF WaitForTime(tDuration := T#500MS) THEN
+        AssertFalse(Condition := bOutOfContextConditionReturnedTrue, Message := 'Out-of-context WaitForCondition must never return TRUE');
+        TEST_FINISHED();
+    END_IF
+END_IF]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
+- [ ] **Step 3: Commit**
+
+```powershell
+cd C:\Users\scott\Documents\TwinCAT_Tests
+git add TwinCAT_Tests/TwinCAT_Tests/TcUnitTests/FB_TimedOrderedGreenPathTests.TcPOU
+git commit -m "test(tcunit-step0): ordered timed-suite coverage + out-of-context WaitForCondition regression
+
+- FB_TimedOrderedGreenPathTests.TcPOU: 3 TEST_TIMED_ORDERED tests; bare WaitForCondition probe red vs 2026.4.9.1"
+```
+
+---
+
+### Task 3: Fixtures, edge suites, three campaign PRGs, plcproj wiring (TwinCAT_Tests)
+
+**Files:**
+- Create (in `...\TwinCAT_Tests\TcUnitTests\`): `FB_StepZeroSimplePass.TcPOU`, `FB_StepZeroEmptySuite.TcPOU`, `FB_StepZeroCounts_ShouldFail.TcPOU`, `PRG_TEST_TCUNIT_STEP0.TcPOU`, `PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU`, `PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU`
+- Modify: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests.plcproj`
+
+**Interfaces:**
+- Consumes: suites from Tasks 1-2; TcUnit `disabled_` prefix (registers the test as `Test_Skipped`, skipped).
+- Produces: three campaigns —
+  - `PRG_TEST_TCUNIT_STEP0` (REGRESSION, all-passing when green): `TimedSuiteTests`, `TimedOrderedTests`. GREEN = zero failures anywhere.
+  - `PRG_TEST_TCUNIT_STEP0_COUNTS` (COUNTS, intentional-failure fixture): `PassSuite`, `CountsSuite_ShouldFail`. GREEN = exactly one failure, identity `Test_IntentionalFail` (script-asserted).
+  - `PRG_TEST_TCUNIT_STEP0_EDGE` (EDGE, green-only): `EmptyFirstSuite`, `MidPassSuite`, `EmptyFinalSuite` — empty-first and empty-final suite traversal.
+  All run `TcUnit.RUN_IN_SEQUENCE()` with a nonzero inter-suite delay (GPL override `T#100MS`).
+
+- [ ] **Step 1: Generate six fresh GUIDs** (`<GUID-3>`…`<GUID-8>`), uniqueness-checked as before.
+
+- [ ] **Step 2: Write the three suite FBs**
+
+`FB_StepZeroSimplePass.TcPOU` (`<GUID-3>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_StepZeroSimplePass" Id="<GUID-3>" SpecialFunc="None">
+    <Declaration><![CDATA[// Single always-passing test; reused across step-0 campaigns.
+FUNCTION_BLOCK FB_StepZeroSimplePass EXTENDS TcUnit.FB_TestSuite]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TEST('Test_SimplePass');
+AssertTrue(Condition := TRUE, Message := 'Passing test');
+TEST_FINISHED();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
+`FB_StepZeroEmptySuite.TcPOU` (`<GUID-4>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_StepZeroEmptySuite" Id="<GUID-4>" SpecialFunc="None">
+    <Declaration><![CDATA[(* Deliberately empty suite: registers zero tests and is trivially finished.
+   Placed first and last in the EDGE campaign to exercise sequential-cursor
+   traversal over suites that finish without ever executing. *)
+FUNCTION_BLOCK FB_StepZeroEmptySuite EXTENDS TcUnit.FB_TestSuite]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
+`FB_StepZeroCounts_ShouldFail.TcPOU` (`<GUID-5>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_StepZeroCounts_ShouldFail" Id="<GUID-5>" SpecialFunc="None">
     <Declaration><![CDATA[(* Deterministic count-semantics fixture: exactly 1 pass, 1 intentional fail,
-   1 skipped (disabled_) test. Expected xUnit contribution: tests=3, failures=1,
-   skipped=1. The _ShouldFail suffix marks the failure as intentional. *)
+   1 skipped test (disabled_ prefix; registers as 'Test_Skipped'). Expected
+   xUnit contribution: tests=3, failures=1, skipped=1. The _ShouldFail suffix
+   marks the failure as intentional per repo convention. *)
 FUNCTION_BLOCK FB_StepZeroCounts_ShouldFail EXTENDS TcUnit.FB_TestSuite]]></Declaration>
     <Implementation>
       <ST><![CDATA[TEST('Test_Pass');
@@ -183,23 +332,70 @@ TEST_FINISHED();]]></ST>
 </TcPlcObject>
 ```
 
-- [ ] **Step 3: Write the campaign PRG**
+- [ ] **Step 3: Write the three campaign PRGs**
 
-Create `PRG_TEST_TCUNIT_STEP0.TcPOU`:
+`PRG_TEST_TCUNIT_STEP0.TcPOU` (`<GUID-6>`):
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
-  <POU Name="PRG_TEST_TCUNIT_STEP0" Id="<GUID-3>" SpecialFunc="None">
-    <Declaration><![CDATA[(* Step-0 verification campaign for the TcUnit fork.
-   Runs sequentially so the RUN_IN_SEQUENCE completion latch is exercised:
-   against TcUnit 2026.4.9.1, TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished
-   never becomes TRUE (breadcrumb #19); from 2026.7.17.1 it latches TRUE.
-   Verification procedure: TcUnitFork docs/verification/2026-07-17-step0-verification.md *)
+  <POU Name="PRG_TEST_TCUNIT_STEP0" Id="<GUID-6>" SpecialFunc="None">
+    <Declaration><![CDATA[(* Step-0 REGRESSION campaign (all-passing when green). Sequential run
+   exercises the RUN_IN_SEQUENCE completion latch: against TcUnit 2026.4.9.1
+   TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished never becomes TRUE
+   (breadcrumb #19); from 2026.7.17.1 it latches TRUE. Also the abort-phase
+   vehicle (timed waits give an abort window).
+   Procedure: TcUnitFork docs/verification/2026-07-17-step0-verification.md *)
 PROGRAM PRG_TEST_TCUNIT_STEP0
 VAR
-    TimedSuiteTests           : FB_TimedSuiteGreenPathTests;
-    StepZeroCounts_ShouldFail : FB_StepZeroCounts_ShouldFail;
+    TimedSuiteTests   : FB_TimedSuiteGreenPathTests;
+    TimedOrderedTests : FB_TimedOrderedGreenPathTests;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TcUnit.RUN_IN_SEQUENCE();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
+`PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU` (`<GUID-7>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="PRG_TEST_TCUNIT_STEP0_COUNTS" Id="<GUID-7>" SpecialFunc="None">
+    <Declaration><![CDATA[(* Step-0 COUNTS campaign: xUnit count-semantics fixture. GREEN means exactly
+   one failed test whose identity is Test_IntentionalFail (script-asserted),
+   never zero failures. Kept separate from the all-passing REGRESSION campaign
+   so a green REGRESSION run is trivially recognizable. *)
+PROGRAM PRG_TEST_TCUNIT_STEP0_COUNTS
+VAR
+    PassSuite             : FB_StepZeroSimplePass;
+    CountsSuite_ShouldFail : FB_StepZeroCounts_ShouldFail;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TcUnit.RUN_IN_SEQUENCE();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
+`PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU` (`<GUID-8>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="PRG_TEST_TCUNIT_STEP0_EDGE" Id="<GUID-8>" SpecialFunc="None">
+    <Declaration><![CDATA[(* Step-0 EDGE campaign (green-only): empty first suite, one passing suite,
+   empty final suite. Exercises sequential-cursor traversal over suites that
+   finish without executing, including the duration-call path that in
+   2026.4.9.1 dereferenced the possibly-null CurrentTestSuiteBeingCalled
+   (fixed 2026.7.17.1 by addressing the finished suite directly). *)
+PROGRAM PRG_TEST_TCUNIT_STEP0_EDGE
+VAR
+    EmptyFirstSuite : FB_StepZeroEmptySuite;
+    MidPassSuite    : FB_StepZeroSimplePass;
+    EmptyFinalSuite : FB_StepZeroEmptySuite;
 END_VAR]]></Declaration>
     <Implementation>
       <ST><![CDATA[TcUnit.RUN_IN_SEQUENCE();]]></ST>
@@ -212,16 +408,20 @@ END_VAR]]></Declaration>
 
 In `TwinCAT_Tests.plcproj`:
 
-1. Add to the `<Folder Include>` block (the ItemGroup containing `<Folder Include="BaseTests" />`):
-
-```xml
-    <Folder Include="TcUnitTests" />
-```
-
-2. Add to the Compile ItemGroup (alongside the existing `<Compile Include=...>` entries):
+1. Add `<Folder Include="TcUnitTests" />` to the Folder ItemGroup (alongside `<Folder Include="BaseTests" />`).
+2. Add six `<Compile Include>` entries to the Compile ItemGroup, each in the established format:
 
 ```xml
     <Compile Include="TcUnitTests\FB_TimedSuiteGreenPathTests.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="TcUnitTests\FB_TimedOrderedGreenPathTests.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="TcUnitTests\FB_StepZeroSimplePass.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="TcUnitTests\FB_StepZeroEmptySuite.TcPOU">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="TcUnitTests\FB_StepZeroCounts_ShouldFail.TcPOU">
@@ -230,193 +430,374 @@ In `TwinCAT_Tests.plcproj`:
     <Compile Include="TcUnitTests\PRG_TEST_TCUNIT_STEP0.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="TcUnitTests\PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="TcUnitTests\PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
 ```
 
-3. Enable xUnit publication via GPL override. Locate the `<PlaceholderReference Include="TcUnit">` element (its `<DefaultResolution>` is at ~line 527) and add inside it:
+3. **Merge** three parameters into the EXISTING `<Parameters>` block under `<PlaceholderReference Include="TcUnit">` (it already holds `LOGEXTENDEDRESULTS`; preserve XAE's emitted format exactly, including the `xmlns=""` attribute on `<Parameter>` — do NOT add a second `<Parameters>` block):
 
 ```xml
       <Parameters>
-        <Parameter ListName="GVL_PARAM_TCUNIT">
+        <Parameter ListName="GVL_PARAM_TCUNIT" xmlns="">
+          <Key>LOGEXTENDEDRESULTS</Key>
+          <Value>FALSE</Value>
+        </Parameter>
+        <Parameter ListName="GVL_PARAM_TCUNIT" xmlns="">
           <Key>XUNITENABLEPUBLISH</Key>
-          <Value>1</Value>
+          <Value>TRUE</Value>
+        </Parameter>
+        <Parameter ListName="GVL_PARAM_TCUNIT" xmlns="">
+          <Key>XUNITFILEPATH</Key>
+          <Value>%TC_BOOTPRJPATH%tcunit_step0_xunit.xml</Value>
+        </Parameter>
+        <Parameter ListName="GVL_PARAM_TCUNIT" xmlns="">
+          <Key>TIMEBETWEENTESTSUITESEXECUTION</Key>
+          <Value>T#100MS</Value>
         </Parameter>
       </Parameters>
 ```
 
-If XAE rejects this format on first build, fall back to setting the parameter in XAE (References → TcUnit → Parameters tab → `xUnitEnablePublish` = TRUE), then diff the plcproj to capture the format XAE writes and keep that. Note: this enables xUnit file output (`C:\tcunit_xunit_testresults.xml`) for ALL TwinCAT_Tests campaigns — one small file per completed run, harmless, and useful.
+Notes: `TIMEBETWEENTESTSUITESEXECUTION = T#100MS` provides the nonzero-delay coverage and applies to all TwinCAT_Tests sequential campaigns (~100 ms per registered suite — negligible, documented). After the first XAE build, diff the plcproj: if XAE rewrote the block, keep XAE's format.
 
 - [ ] **Step 5: Commit**
 
 ```powershell
 cd C:\Users\scott\Documents\TwinCAT_Tests
-git add TwinCAT_Tests/TwinCAT_Tests/TcUnitTests/FB_StepZeroCounts_ShouldFail.TcPOU TwinCAT_Tests/TwinCAT_Tests/TcUnitTests/PRG_TEST_TCUNIT_STEP0.TcPOU TwinCAT_Tests/TwinCAT_Tests/TwinCAT_Tests.plcproj
-git commit -m "test(tcunit-step0): add count-semantics fixture, campaign PRG, plcproj wiring
+git add TwinCAT_Tests/TwinCAT_Tests/TcUnitTests TwinCAT_Tests/TwinCAT_Tests/TwinCAT_Tests.plcproj
+git commit -m "test(tcunit-step0): count fixture, edge suites, three campaign PRGs, plcproj wiring
 
-- FB_StepZeroCounts_ShouldFail.TcPOU: 1 pass + 1 intentional fail + 1 skipped fixture
-- PRG_TEST_TCUNIT_STEP0.TcPOU: sequential campaign PRG (RUN_IN_SEQUENCE completion regression)
-- TwinCAT_Tests.plcproj: TcUnitTests folder + 3 compile entries + xUnitEnablePublish override
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
+- FB_StepZeroSimplePass.TcPOU / FB_StepZeroEmptySuite.TcPOU / FB_StepZeroCounts_ShouldFail.TcPOU: campaign suites
+- PRG_TEST_TCUNIT_STEP0.TcPOU: all-passing REGRESSION campaign (sequential latch + abort vehicle)
+- PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU: intentional-failure counts campaign
+- PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU: empty-first/final sequential edge campaign
+- TwinCAT_Tests.plcproj: TcUnitTests folder, 8 compile entries, merged xUnit path/publish/delay params"
 ```
 
 ---
 
-### Task 3: Committed verification procedure and canonicalization tooling (TcUnitFork)
+### Task 4: Sequential single-suite check in TcUnit-Verifier (TcUnitFork)
 
 **Files:**
-- Create: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md`
-- Create: `C:\Users\scott\Documents\TcUnitFork\docs\verification\Canonicalize-XUnit.ps1`
+- Create: `C:\Users\scott\Documents\TcUnitFork\TcUnit-Verifier\TcUnit-Verifier_TwinCAT\TcUnit-Verifier_TwinCAT\TcUnitVerifier\POUs\FB_SequentialSingleSuite.TcPOU`
+- Create: `C:\Users\scott\Documents\TcUnitFork\TcUnit-Verifier\TcUnit-Verifier_TwinCAT\TcUnit-Verifier_TwinCAT\TcUnitVerifier\POUs\PRG_TEST_SEQUENCE.TcPOU`
+- Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit-Verifier\TcUnit-Verifier_TwinCAT\TcUnit-Verifier_TwinCAT\TcUnitVerifier\TcUnitVerifier.plcproj`
 
 **Interfaces:**
-- Consumes: campaign artifacts from Tasks 1-2; xUnit output path `C:\tcunit_xunit_testresults.xml` (TcUnit default).
-- Produces: the RED/GREEN procedure Scott executes in Tasks 4 and 9, with result-recording tables; `Canonicalize-XUnit.ps1 -Path <file> -OutPath <file>` which blanks all `time="..."` attribute values.
+- Consumes: installed TcUnit (verifier resolves `TcUnit, *` — picks up whatever is installed).
+- Produces: the committed single-suite sequential check. TwinCAT_Tests can never exercise `NumberOfInitializedTestSuites = 1` (every compiled PRG's suites register), so N=1 runs here with the existing `PRG_TEST` excluded from build. This PRG is NOT assigned to any task by default — the existing verifier configuration is untouched.
 
-- [ ] **Step 1: Write the canonicalization script**
+- [ ] **Step 1: Generate two fresh GUIDs** (`<GUID-9>`, `<GUID-10>`), uniqueness-checked. Then confirm the verifier POU folder layout with Glob (`TcUnit-Verifier/**/POUs/*.TcPOU`) and mirror the existing `<Compile Include>` path style found in `TcUnitVerifier.plcproj`; if POUs live at a different relative path, place the new files beside the existing PRG_TEST.
 
-Create `Canonicalize-XUnit.ps1`:
+- [ ] **Step 2: Write the suite and PRG**
+
+`FB_SequentialSingleSuite.TcPOU` (`<GUID-9>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_SequentialSingleSuite" Id="<GUID-9>" SpecialFunc="None">
+    <Declaration><![CDATA[// One passing test; used by PRG_TEST_SEQUENCE for the N=1 sequential check.
+FUNCTION_BLOCK FB_SequentialSingleSuite EXTENDS TcUnit.FB_TestSuite]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TEST('Test_SingleSequentialPass');
+AssertTrue(Condition := TRUE, Message := 'Single-suite sequential run');
+TEST_FINISHED();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
+`PRG_TEST_SEQUENCE.TcPOU` (`<GUID-10>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="PRG_TEST_SEQUENCE" Id="<GUID-10>" SpecialFunc="None">
+    <Declaration><![CDATA[(* Committed single-suite RUN_IN_SEQUENCE check (precursor of the fully
+   automated sequential verifier configuration; see the Phase 5 verifier plan).
+   Usage: exclude PRG_TEST from build, assign PlcTask to this PRG, run, and
+   verify TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished latches TRUE.
+   With exactly one registered suite, 2026.4.9.1 never latches (the final-suite
+   branch never published the finished count); 2026.7.17.1 latches. *)
+PROGRAM PRG_TEST_SEQUENCE
+VAR
+    SingleSuite : FB_SequentialSingleSuite;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TcUnit.RUN_IN_SEQUENCE();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
+- [ ] **Step 3: Add both files to `TcUnitVerifier.plcproj`** as `<Compile Include>` entries matching the existing entries' path style.
+
+- [ ] **Step 4: Commit**
+
+```powershell
+cd C:\Users\scott\Documents\TcUnitFork
+git add TcUnit-Verifier
+git commit -m "test(verifier): committed single-suite RUN_IN_SEQUENCE check
+
+- FB_SequentialSingleSuite.TcPOU: one-test suite for the N=1 sequential case
+- PRG_TEST_SEQUENCE.TcPOU: unassigned-by-default sequential check PRG with usage procedure
+- TcUnitVerifier.plcproj: compile entries for both"
+```
+
+---
+
+### Task 5: XML semantic verifier script and verification procedure (TcUnitFork)
+
+**Files:**
+- Create: `C:\Users\scott\Documents\TcUnitFork\docs\verification\Verify-StepZeroXUnit.ps1`
+- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md` (prepend procedure body above the Task 0 appendix)
+
+**Interfaces:**
+- Consumes: campaign xUnit file `C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml`; suite naming `PRG_<name>.<instance>` (TcUnit strips the project prefix).
+- Produces: `Verify-StepZeroXUnit.ps1 -Path <xml> -Campaign REGRESSION|COUNTS|EDGE -Phase RED|GREEN [-OutCanonical <path>]` — parses the XML, asserts exact suite/test names, counts, statuses, and failure identity; asserts every non-campaign suite reports zero tests; normalizes only `time` attributes when emitting the canonical golden. Exit code 0 = all assertions pass.
+
+- [ ] **Step 1: Write the verifier script**
 
 ```powershell
 param(
     [Parameter(Mandatory = $true)][string]$Path,
-    [Parameter(Mandatory = $true)][string]$OutPath
+    [Parameter(Mandatory = $true)][ValidateSet('REGRESSION', 'COUNTS', 'EDGE')][string]$Campaign,
+    [Parameter(Mandatory = $true)][ValidateSet('RED', 'GREEN')][string]$Phase,
+    [string]$OutCanonical
 )
-# Blanks every time="..." attribute so runs differing only in duration compare byte-identical.
-$content = Get-Content -Path $Path -Raw
-$canonical = $content -replace 'time="[^"]*"', 'time=""'
-Set-Content -Path $OutPath -Value $canonical -NoNewline -Encoding UTF8
-Write-Host "Canonicalized $Path -> $OutPath"
+
+$script:failCount = 0
+function Assert-True([bool]$Condition, [string]$Message) {
+    if ($Condition) { Write-Host "PASS  $Message" }
+    else { Write-Host "FAIL  $Message" -ForegroundColor Red; $script:failCount++ }
+}
+
+if (-not (Test-Path $Path)) { Write-Host "FAIL  xUnit file not found: $Path" -ForegroundColor Red; exit 1 }
+[xml]$doc = Get-Content -Path $Path -Raw
+$root = $doc.testsuites
+
+# Expected model per campaign/phase. failing/skippedNames are exact test-name sets.
+# RED root semantics (2026.4.9.1 bugs): tests attr = successful count; no skipped attr.
+$model = @{}
+switch ("$Campaign/$Phase") {
+    'REGRESSION/RED' {
+        $model['PRG_TEST_TCUNIT_STEP0.TimedSuiteTests']   = @{ tests = 5; failing = @('Test_PaddedNameLookup', 'Test_StaleContextGuard'); skippedNames = @() }
+        $model['PRG_TEST_TCUNIT_STEP0.TimedOrderedTests'] = @{ tests = 3; failing = @('Test_Ordered3_Guard'); skippedNames = @() }
+        $rootTests = '5'; $rootFailures = '3'; $rootSkipped = $null
+    }
+    'REGRESSION/GREEN' {
+        $model['PRG_TEST_TCUNIT_STEP0.TimedSuiteTests']   = @{ tests = 5; failing = @(); skippedNames = @() }
+        $model['PRG_TEST_TCUNIT_STEP0.TimedOrderedTests'] = @{ tests = 3; failing = @(); skippedNames = @() }
+        $rootTests = '8'; $rootFailures = '0'; $rootSkipped = '0'
+    }
+    'COUNTS/RED' {
+        $model['PRG_TEST_TCUNIT_STEP0_COUNTS.PassSuite']              = @{ tests = 1; failing = @(); skippedNames = @() }
+        $model['PRG_TEST_TCUNIT_STEP0_COUNTS.CountsSuite_ShouldFail'] = @{ tests = 3; failing = @('Test_IntentionalFail'); skippedNames = @('Test_Skipped') }
+        $rootTests = '3'; $rootFailures = '1'; $rootSkipped = $null
+    }
+    'COUNTS/GREEN' {
+        $model['PRG_TEST_TCUNIT_STEP0_COUNTS.PassSuite']              = @{ tests = 1; failing = @(); skippedNames = @() }
+        $model['PRG_TEST_TCUNIT_STEP0_COUNTS.CountsSuite_ShouldFail'] = @{ tests = 3; failing = @('Test_IntentionalFail'); skippedNames = @('Test_Skipped') }
+        $rootTests = '4'; $rootFailures = '1'; $rootSkipped = '1'
+    }
+    'EDGE/GREEN' {
+        $model['PRG_TEST_TCUNIT_STEP0_EDGE.EmptyFirstSuite'] = @{ tests = 0; failing = @(); skippedNames = @() }
+        $model['PRG_TEST_TCUNIT_STEP0_EDGE.MidPassSuite']    = @{ tests = 1; failing = @(); skippedNames = @() }
+        $model['PRG_TEST_TCUNIT_STEP0_EDGE.EmptyFinalSuite'] = @{ tests = 0; failing = @(); skippedNames = @() }
+        $rootTests = '1'; $rootFailures = '0'; $rootSkipped = '0'
+    }
+    'EDGE/RED' { Write-Host 'FAIL  EDGE campaign is GREEN-only by design' -ForegroundColor Red; exit 1 }
+}
+
+# Root attribute assertions
+Assert-True ($root.tests -eq $rootTests)       "root tests='$($root.tests)' expected '$rootTests'"
+Assert-True ($root.failures -eq $rootFailures) "root failures='$($root.failures)' expected '$rootFailures'"
+if ($null -eq $rootSkipped) {
+    Assert-True ($null -eq $root.GetAttribute('skipped') -or $root.GetAttribute('skipped') -eq '') "root skipped attribute absent (RED semantics)"
+} else {
+    Assert-True ($root.skipped -eq $rootSkipped) "root skipped='$($root.skipped)' expected '$rootSkipped'"
+}
+
+$suites = @($root.testsuite)
+foreach ($name in $model.Keys) {
+    $suite = $suites | Where-Object { $_.name -eq $name }
+    Assert-True ($null -ne $suite) "suite present: $name"
+    if ($null -eq $suite) { continue }
+    $m = $model[$name]
+    Assert-True ([int]$suite.tests -eq $m.tests)              "$name tests=$($suite.tests) expected $($m.tests)"
+    Assert-True ([int]$suite.failures -eq $m.failing.Count)   "$name failures=$($suite.failures) expected $($m.failing.Count)"
+    if ($Phase -eq 'GREEN') {
+        Assert-True ($suite.skipped -eq [string]$m.skippedNames.Count) "$name skipped=$($suite.skipped) expected $($m.skippedNames.Count)"
+    }
+    $cases = @($suite.testcase)
+    Assert-True ($cases.Count -eq $m.tests) "$name testcase count=$($cases.Count) expected $($m.tests)"
+    $actualFailing = @($cases | Where-Object { $_.status -eq 'FAIL' } | ForEach-Object { $_.name })
+    $actualSkipped = @($cases | Where-Object { $_.status -eq 'SKIP' } | ForEach-Object { $_.name })
+    Assert-True (-not (Compare-Object $actualFailing $m.failing))      "$name failing set = [$($actualFailing -join ',')] expected [$($m.failing -join ',')]"
+    Assert-True (-not (Compare-Object $actualSkipped $m.skippedNames)) "$name skipped set = [$($actualSkipped -join ',')] expected [$($m.skippedNames -join ',')]"
+    foreach ($case in $cases) {
+        if ($case.name -in $m.failing) {
+            Assert-True ($null -ne $case.failure) "$name/$($case.name) carries a <failure> element"
+        } else {
+            Assert-True ($null -eq $case.failure) "$name/$($case.name) carries no <failure> element"
+        }
+    }
+}
+
+# Every suite outside the campaign model must be an inactive zero-test registration
+foreach ($suite in $suites) {
+    if (-not $model.ContainsKey($suite.name)) {
+        Assert-True ([int]$suite.tests -eq 0) "non-campaign suite $($suite.name) has tests=0"
+    }
+}
+
+if ($OutCanonical) {
+    $content = Get-Content -Path $Path -Raw
+    $canonical = $content -replace 'time="[^"]*"', 'time=""'
+    Set-Content -Path $OutCanonical -Value $canonical -NoNewline -Encoding UTF8
+    Write-Host "Canonical golden written to $OutCanonical"
+}
+
+Write-Host ""
+if ($script:failCount -eq 0) { Write-Host "ALL ASSERTIONS PASSED ($Campaign/$Phase)"; exit 0 }
+else { Write-Host "$script:failCount ASSERTION(S) FAILED ($Campaign/$Phase)" -ForegroundColor Red; exit 1 }
 ```
 
-- [ ] **Step 2: Write the verification procedure**
+- [ ] **Step 2: Prepend the procedure body to the verification doc**
 
-Create `2026-07-17-step0-verification.md` with exactly this structure (result cells left as `_pending_` for Tasks 4/9 to fill):
+Above the Task 0 appendix, add:
 
 ```markdown
 # Step-0 Verification Procedure (Phase 4a/4b + sequential runner + xUnit counts)
 
-Campaign: `PRG_TEST_TCUNIT_STEP0` in TwinCAT_Tests (branch `feat/tcunit-step0`).
-Run once RED against TcUnit **2026.4.9.1**, once GREEN against **2026.7.17.1**.
+Campaigns live in TwinCAT_Tests (branch `feat/tcunit-step0`). xUnit output:
+`C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml` (campaign-specific override).
+Run RED against TcUnit **2026.4.9.1**, GREEN against candidate **2026.7.17.1**.
+Every xUnit claim is asserted by `Verify-StepZeroXUnit.ps1`, never by eyeball.
 
-## Run recipe (identical for RED and GREEN)
+## Per-campaign run recipe
 
-1. Open `TwinCAT_Tests.sln` in XAE.
-2. Assign `PRG_TEST_TCUNIT_STEP0` to TestTask (replace the currently assigned PRG_TEST_* for this run; restore afterward).
-3. Build (Ctrl+Shift+B) — must compile clean.
+1. Open `TwinCAT_Tests.sln` in XAE. Assign the campaign PRG to TestTask
+   (replace the currently assigned PRG_TEST_*; restore when done).
+2. Build (Ctrl+Shift+B) - must compile clean.
+3. Delete `C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml` if present. Record that
+   it is absent.
 4. Activate configuration, restart in Run mode, log in.
-5. Wait for the ADS summary block in the Error List (appears when all suites stored).
-6. Online-view `TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished` and watch for 60 s after the summary appears.
-7. Copy `C:\tcunit_xunit_testresults.xml` aside; run `Canonicalize-XUnit.ps1` on it.
-8. Record every row below. RED must match the RED column before any fix is trusted;
-   GREEN must match the GREEN column before release.
+5. Wait for the ADS summary block (`| ==========TESTS FINISHED RUNNING==========`).
+6. Watch `TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished` online for 60 s
+   after the summary appears; record its value.
+7. Verify the xUnit file was freshly created (creation time after step 4;
+   record `Get-FileHash`), then run:
+   `pwsh -File C:\Users\scott\Documents\TcUnitFork\docs\verification\Verify-StepZeroXUnit.ps1 -Path C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml -Campaign <X> -Phase <RED|GREEN> [-OutCanonical <path>]`
+8. Record script output (PASS/FAIL lines) and the observations table.
 
-## Expected observations
+## Phase matrix
 
-| # | Observation | RED (2026.4.9.1) | GREEN (2026.7.17.1) | RED actual | GREEN actual |
-|---|---|---|---|---|---|
-| 1 | Test_Wait1s / Test_ConditionMet / Test_ConditionTimeoutDetected | all PASS | all PASS | _pending_ | _pending_ |
-| 2 | Test_PaddedNameLookup | FAIL (condition wait times out; 2 asserts fail) | PASS | _pending_ | _pending_ |
-| 3 | Test_StaleContextGuard | FAIL (Type_WAIT_MISUSE from stale bare wait) | PASS | _pending_ | _pending_ |
-| 4 | FB_StepZeroCounts_ShouldFail | Test_Pass PASS; Test_IntentionalFail FAIL; disabled_Test_Skipped SKIP | same (intentional fixture) | _pending_ | _pending_ |
-| 5 | `AllTestSuitesFinished` within 60 s of summary | stays FALSE (breadcrumb #19) | TRUE | _pending_ | _pending_ |
-| 6 | 'TEST RUN COMPLETED' trace in EventLog | absent | present once | _pending_ | _pending_ |
-| 7 | xUnit root `tests` attribute | 5 (successful-count bug: 8 total - 3 failed) | 8 (total) | _pending_ | _pending_ |
-| 8 | xUnit root `failures` attribute | 3 (2 timed regressions + 1 intentional) | 1 (intentional only) | _pending_ | _pending_ |
-| 9 | xUnit root `skipped` attribute | absent | 1 | _pending_ | _pending_ |
-| 10 | testsuite[TimedSuiteTests] tests/failures/skipped | 5 / 2 / (absent) | 5 / 0 / 0 | _pending_ | _pending_ |
-| 11 | testsuite[StepZeroCounts_ShouldFail] tests/failures/skipped | 3 / 1 / (absent) | 3 / 1 / 1 | _pending_ | _pending_ |
-| 12 | ADS summary 'successful tests' count | 5 (skipped counted as pass; 2 timed regressions failing) | 6 (8 - 1 fail - 1 skip) | _pending_ | _pending_ |
-| 13 | Out-of-context wait Error trace | may repeat (unguarded in 2026.4.9.1) | exactly once (one-shot) | _pending_ | _pending_ |
+| Phase | Campaigns | Extra checks |
+|---|---|---|
+| RED (2026.4.9.1) | REGRESSION, COUNTS | rows R1-R6 below |
+| GREEN (2026.7.17.1) | REGRESSION, COUNTS, EDGE | rows G1-G8, abort phase A1, single-suite S1 |
+
+## Non-XML observations
+
+| # | Observation | Expected | Actual |
+|---|---|---|---|
+| R1 | REGRESSION RED: script exit code | 0 (all RED-model assertions hold) | _pending_ |
+| R2 | REGRESSION RED: AllTestSuitesFinished after summary | stays FALSE for 60 s (breadcrumb #19) | _pending_ |
+| R3 | REGRESSION RED: 'TEST RUN COMPLETED' trace | absent | _pending_ |
+| R4 | REGRESSION RED: out-of-context Error traces | repeated burst from ordered probe (unguarded in 2026.4.9.1) | _pending_ |
+| R5 | COUNTS RED: script exit code | 0 | _pending_ |
+| R6 | COUNTS RED: ADS 'Successful tests:' line | 3 (skipped counted as successful: 4 total - 1 fail) | _pending_ |
+| G1 | REGRESSION GREEN: script exit code | 0 (zero failures anywhere) | _pending_ |
+| G2 | REGRESSION GREEN: AllTestSuitesFinished | TRUE within 60 s | _pending_ |
+| G3 | REGRESSION GREEN: 'TEST RUN COMPLETED' trace | present exactly once | _pending_ |
+| G4 | REGRESSION GREEN: out-of-context Error trace | exactly once per suite instance (one-shot) | _pending_ |
+| G5 | COUNTS GREEN: script exit code | 0 (sole failure identity = Test_IntentionalFail) | _pending_ |
+| G6 | COUNTS GREEN: ADS 'Successful tests:' line | 2 (4 total - 1 fail - 1 skip) | _pending_ |
+| G7 | EDGE GREEN: script exit code | 0; AllTestSuitesFinished TRUE | _pending_ |
+| G8 | xUnit file freshness | absent before each run; fresh creation time + new hash after | _pending_ |
+| A1 | Abort phase: rerun REGRESSION, online-write TcUnit.GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := TRUE at any point mid-run (easiest during TimedSuiteTests' first seconds, before completion) | AllTestSuitesFinished latches TRUE promptly; 'TEST RUN ABORTED' trace present; delete the xUnit file afterward | _pending_ |
+| S1 | Single-suite (TcUnit-Verifier): exclude PRG_TEST from build, assign PlcTask to PRG_TEST_SEQUENCE, run | AllTestSuitesFinished TRUE with exactly 1 registered suite; restore PRG_TEST afterward | _pending_ |
+
+## Memory evidence (Task 10)
+
+| Measurement | Before (2026.4.9.1) | After (2026.7.17.1) | Delta |
+|---|---|---|---|
+| SIZEOF(ST_TestSuiteResult) | _pending_ | _pending_ | expected +2 bytes (+padding) |
+| SIZEOF(ST_TestSuiteResults) | _pending_ | _pending_ | expected ~ +2 KB (1000 x 2 bytes + aggregate UDINT widening + padding) |
+| TwinCAT_Tests build: allocated data size | _pending_ | _pending_ | record from build output |
 
 ## Golden
 
-After the GREEN run matches all rows, copy the canonicalized GREEN xUnit file to
-`docs/verification/goldens/2026-07-17-step0-xunit-canonical.xml` and commit it.
-This golden is the Level 2 baseline for the Phase 5 refactor: future runs of this
-campaign must reproduce it byte-identically after canonicalization, with any
-intentional difference explicitly approved and the golden re-committed.
+After GREEN REGRESSION and COUNTS runs pass, re-run the script with
+`-OutCanonical` and commit the outputs as
+`docs/verification/goldens/2026-07-17-step0-<campaign>-canonical.xml`.
+These are the Level 2 baselines for the Phase 5 refactor: future campaign runs
+must reproduce them byte-identically after canonicalization, with intentional
+differences explicitly approved and the goldens re-committed.
 
 ## Results log
 
-| Date | Library | Runner | Outcome | Notes |
+| Date | Library | Campaign/Phase | Script exit | Notes |
 |---|---|---|---|---|
-| _pending_ | 2026.4.9.1 | | RED run | |
-| _pending_ | 2026.7.17.1 | | GREEN run | |
 ```
 
-- [ ] **Step 3: Commit (TcUnitFork)**
+- [ ] **Step 3: Commit**
 
 ```powershell
 cd C:\Users\scott\Documents\TcUnitFork
-git add docs/verification/2026-07-17-step0-verification.md docs/verification/Canonicalize-XUnit.ps1
-git commit -m "docs(step0): add committed verification procedure and xUnit canonicalization script
+git add docs/verification/Verify-StepZeroXUnit.ps1 docs/verification/2026-07-17-step0-verification.md
+git commit -m "docs(step0): XML semantic verifier script and full verification procedure
 
-- 2026-07-17-step0-verification.md: RED/GREEN campaign procedure with 13 expected observations
-- Canonicalize-XUnit.ps1: blanks time attributes for byte-comparable goldens
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
+- Verify-StepZeroXUnit.ps1: parses campaign xUnit, asserts exact suite/test names, counts, statuses, failure identity, zero-test isolation of non-campaign suites; canonical golden emitter
+- 2026-07-17-step0-verification.md: per-campaign recipes, RED/GREEN phase matrix, abort and single-suite checks, memory-evidence table"
 ```
 
 ---
 
-### Task 4: USER ACTION — RED run against 2026.4.9.1
+### Task 6: USER ACTION — RED runs against 2026.4.9.1
 
 **Files:**
-- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md` (fill "RED actual" column and results log)
+- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md` (rows R1-R6 + results log)
 
 **Interfaces:**
-- Consumes: the run recipe from Task 3; campaign from Tasks 1-2.
-- Produces: recorded proof that all three defects reproduce (the Red of red-green). Tasks 5-7 must not start until every RED row matches.
+- Consumes: Task 5 recipes; campaigns from Tasks 1-3 (TwinCAT_Tests still resolves `TcUnit, 2026.4.9.1` — no reference change for RED).
+- Produces: recorded proof all three defects reproduce and the regression tests are load-bearing. Tasks 7-9 must not start until R1-R6 match.
 
-- [ ] **Step 1: Ask Scott to execute the RED run**
+- [ ] **Step 1: Ask Scott to run REGRESSION then COUNTS per the recipe**, running the script with `-Phase RED` after each. EDGE is not run RED (green-only by design; its null-pointer hazard is code-inspection-based and the plan does not deliberately crash the runtime).
 
-Present the Task 3 run recipe verbatim. TwinCAT_Tests still references `TcUnit, 2026.4.9.1` — no reference change needed for RED.
-
-- [ ] **Step 2: Record results**
-
-Fill the "RED actual" column and the results-log row from Scott's report. Expected: rows 2, 3, 5, 6, 7, 9 show the defects (regression tests fail, completion never latches, counts wrong).
-
-If any RED row does NOT match (e.g., a regression test unexpectedly passes), STOP: the test is not exercising the defect — rework the test in Task 1/2 before touching any implementation.
+- [ ] **Step 2: Record R1-R6 and results-log rows.** If any RED assertion unexpectedly passes (script exit 0 not achieved the way the model predicts, or a regression test green), STOP — the test is not exercising the defect; rework Tasks 1-3 before touching implementation.
 
 - [ ] **Step 3: Commit**
 
 ```powershell
 cd C:\Users\scott\Documents\TcUnitFork
 git add docs/verification/2026-07-17-step0-verification.md
-git commit -m "docs(step0): record RED run results against TcUnit 2026.4.9.1
+git commit -m "docs(step0): RED runs recorded against TcUnit 2026.4.9.1
 
-- 2026-07-17-step0-verification.md: all three defects reproduced; regression tests proven load-bearing
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
+- 2026-07-17-step0-verification.md: R1-R6 filled; all three defects reproduced; regressions proven load-bearing"
 ```
 
 ---
 
-### Task 5: FB_TimedTestSuite hardening (Phase 4a fixes)
+### Task 7: FB_TimedTestSuite hardening (Phase 4a fixes)
 
 **Files:**
 - Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\POUs\FB_TimedTestSuite.TcPOU`
 
 **Interfaces:**
 - Consumes: inherited `FB_TestSuite` members `Tests[]`, `GetCurrentTaskIndex` (FB instance), `TraceWithSeverity`; `GVL_TcUnit.CurrentTestNameBeingCalled`; `TwinCAT_SystemInfoVarList._TaskInfo[].CycleCount`.
-- Produces: hardened invariant — `_nActiveTimedTestIdx` is valid only when set in the CURRENT task cycle by a `TEST_TIMED*` call whose test name is still the framework's current test. New PRIVATE method `_GetActiveWaitContext : UINT` (returns 0 = no valid context). Public API unchanged.
+- Produces: hardened invariant — `_nActiveTimedTestIdx` is valid only when set in the CURRENT task cycle by a `TEST_TIMED*` call whose test name is still the framework's current test. New PRIVATE method `_GetActiveWaitContext : UINT` (0 = no valid context). Public API unchanged.
 
-- [ ] **Step 1: Generate one fresh GUID** for the new method (same command/uniqueness check as Task 1 Step 2). Use as `<GUID-4>`.
+- [ ] **Step 1: Generate one fresh GUID** for the new method (`<GUID-11>`), uniqueness-checked.
 
 - [ ] **Step 2: Add the two new VARs**
 
-In the FUNCTION_BLOCK declaration, change:
-
-```iecst
-VAR
-    TimedTestStates      : ARRAY[1..GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite] OF ST_TimedTestState;
-    _nActiveTimedTestIdx : UINT;
-END_VAR
-```
-
-to:
+Change the declaration block to:
 
 ```iecst
 VAR
@@ -432,10 +813,10 @@ END_VAR
 
 - [ ] **Step 3: Add the `_GetActiveWaitContext` method**
 
-Add as a new `<Method>` element (before the closing `</POU>`), with `<GUID-4>`:
+New `<Method>` element before `</POU>`, with `<GUID-11>`:
 
 ```xml
-    <Method Name="_GetActiveWaitContext" Id="<GUID-4>">
+    <Method Name="_GetActiveWaitContext" Id="<GUID-11>">
       <Declaration><![CDATA[(* Returns the timed-test index for a wait-helper call, or 0 when the call is
    out of context. Valid context requires all three: an index was set, it was
    set in the current task cycle (TEST_TIMED* ran earlier in this scan and
@@ -468,13 +849,14 @@ _GetActiveWaitContext := idx;]]></ST>
 
 - [ ] **Step 4: Fix the context lifecycle in TEST_TIMED**
 
-Remove the early assignment (currently after the `_FindTestIndex` null check):
+Remove the early `_nActiveTimedTestIdx := idx;` (currently after the `_FindTestIndex` null check). Replace the method's final lines:
 
 ```iecst
-_nActiveTimedTestIdx := idx;
+// Step 9: Test body should execute
+TEST_TIMED := TRUE;
 ```
 
-and instead set the context immediately before the body-executes return at the end of the method, so every early-return path leaves the context cleared (it is reset to 0 at Step 1 of the method):
+with:
 
 ```iecst
 // Step 9: Test body should execute - arm the wait context for this cycle only
@@ -484,9 +866,16 @@ _nActiveTimedTestCycle := TwinCAT_SystemInfoVarList._TaskInfo[GetCurrentTaskInde
 TEST_TIMED := TRUE;
 ```
 
-- [ ] **Step 5: Fix the context lifecycle in TEST_TIMED_ORDERED**
+- [ ] **Step 5: Same lifecycle fix in TEST_TIMED_ORDERED**
 
-Identical change: remove `_nActiveTimedTestIdx := idx;` from Step 9 of that method, and change the final lines (after the `SetStartedAtIfNotSet` block) to:
+Remove its `_nActiveTimedTestIdx := idx;` (Step 9 of that method). Replace its final lines:
+
+```iecst
+// Step 14: Test body should execute
+TEST_TIMED_ORDERED := TRUE;
+```
+
+with:
 
 ```iecst
 // Step 14: Test body should execute - arm the wait context for this cycle only
@@ -498,7 +887,7 @@ TEST_TIMED_ORDERED := TRUE;
 
 - [ ] **Step 6: Route WaitForTime through the guard with a one-shot trace**
 
-Replace the first two steps of `WaitForTime`:
+Replace:
 
 ```iecst
 WaitForTime := FALSE;
@@ -531,23 +920,11 @@ IF idx = 0 THEN
 END_IF
 ```
 
-- [ ] **Step 7: Same change in WaitForCondition**
-
-Apply the identical replacement in `WaitForCondition` (message text `'WaitForCondition called without active timed test context'`).
+- [ ] **Step 7: Identical change in WaitForCondition** (message text `'WaitForCondition called without active timed test context'`).
 
 - [ ] **Step 8: Route WaitTimedOut through the guard**
 
-Replace the property Get implementation:
-
-```iecst
-IF _nActiveTimedTestIdx > 0 THEN
-    WaitTimedOut := TimedTestStates[_nActiveTimedTestIdx].bConditionTimedOut;
-ELSE
-    WaitTimedOut := FALSE;
-END_IF
-```
-
-with (also add `idx : UINT;` to the Get accessor's currently empty `VAR ... END_VAR` block):
+Add `idx : UINT;` to the Get accessor's `VAR ... END_VAR` block, then replace the implementation with:
 
 ```iecst
 idx := _GetActiveWaitContext();
@@ -560,7 +937,7 @@ END_IF
 
 - [ ] **Step 9: Trim the lookup name in GetTimedTestResult**
 
-At the top of `GetTimedTestResult`, before `idx := _FindTestIndex(...)`, add:
+Before `idx := _FindTestIndex(TestName := TestName);` add:
 
 ```iecst
 // Normalize the same way TEST(), TEST_ORDERED(), and TEST_TIMED() do
@@ -574,28 +951,25 @@ cd C:\Users\scott\Documents\TcUnitFork
 git add TcUnit/TcUnit/POUs/FB_TimedTestSuite.TcPOU
 git commit -m "fix(timed-suite): cycle-guarded wait context, one-shot misuse traces, trimmed result lookup
 
-- FB_TimedTestSuite.TcPOU: context armed only when a body executes and validated per task cycle + test name (_GetActiveWaitContext); out-of-context wait traces one-shot; GetTimedTestResult trims TestName
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
+- FB_TimedTestSuite.TcPOU: context armed only when a body executes and validated per task cycle + test name (_GetActiveWaitContext); WaitForTime/WaitForCondition/WaitTimedOut all route through the guard; out-of-context traces one-shot; GetTimedTestResult trims TestName"
 ```
 
-Known residual (documented in Task 9's breadcrumb update): a bare wait placed in the same scan immediately after an executing block, while that block's test is still the current test, is textually indistinguishable from a legitimate in-body call and remains accepted.
+Known residual (Task 13 documents it): a bare wait placed in the same scan immediately after an executing block, while that block's test is still the current test, is textually indistinguishable from a legitimate in-body call and remains accepted.
 
 ---
 
-### Task 6: RUN_IN_SEQUENCE completion fix
+### Task 8: RUN_IN_SEQUENCE completion fix
 
 **Files:**
 - Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\POUs\FB_TcUnitRunner.TcPOU` (method `RunTestSuiteTestsInSequence` only)
 
 **Interfaces:**
-- Consumes: existing `AllTestSuitesFinished` latch and `NumberOfTestSuitesFinished` scan-local completion check.
-- Produces: `AllTestSuitesFinished` latches TRUE one scan after the final suite reports finished, for any suite count including 1. Parallel runner untouched.
+- Consumes: existing `AllTestSuitesFinished` latch and scan-local `NumberOfTestSuitesFinished` completion check.
+- Produces: `AllTestSuitesFinished` latches when the final suite reports finished, for any suite count including 1 (proven by S1). Parallel runner untouched.
 
 - [ ] **Step 1: Replace the advance/finish block**
 
-In `RunTestSuiteTestsInSequence`, replace:
+Replace:
 
 ```iecst
         IF GVL_TcUnit.TestSuiteAddresses[CurrentlyRunningTestSuite]^.AreAllTestsFinished() THEN
@@ -626,7 +1000,7 @@ with:
             END_IF
 ```
 
-(The existing `ELSIF NOT TimerBetweenExecutionOfTestSuites.Q THEN ... END_IF`, abort block, and `IF NumberOfTestSuitesFinished = ... THEN AllTestSuitesFinished := TRUE` latch stay exactly as they are.)
+(The `ELSIF NOT TimerBetweenExecutionOfTestSuites.Q THEN ... END_IF` execution branch, the abort block, and the `IF NumberOfTestSuitesFinished = ... THEN AllTestSuitesFinished := TRUE` latch stay exactly as they are.)
 
 - [ ] **Step 2: Commit**
 
@@ -635,45 +1009,44 @@ cd C:\Users\scott\Documents\TcUnitFork
 git add TcUnit/TcUnit/POUs/FB_TcUnitRunner.TcPOU
 git commit -m "fix(runner): RUN_IN_SEQUENCE completion latches when the final suite finishes
 
-- FB_TcUnitRunner.TcPOU: final-suite branch publishes the full finished count (method VAR resets each scan, so incremental counting never completed - breadcrumb #19); duration call addresses the finished suite directly instead of the possibly-null CurrentTestSuiteBeingCalled
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
+- FB_TcUnitRunner.TcPOU: final-suite branch publishes the full finished count (method VAR resets each scan, so incremental counting never completed - breadcrumb #19); duration call addresses the finished suite directly instead of the possibly-null CurrentTestSuiteBeingCalled"
 ```
 
 ---
 
-### Task 7: xUnit count semantics
+### Task 9: xUnit count semantics with UDINT aggregates
 
 **Files:**
 - Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\DUTs\ST_TestSuiteResult.TcDUT`
 - Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\DUTs\ST_TestSuiteResults.TcDUT`
 - Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\POUs\FB_TestResults.TcPOU`
 - Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\POUs\FB_xUnitXmlPublisher.TcPOU`
+- Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\POUs\FB_AdsTestResultLogger.TcPOU`
 
 **Interfaces:**
 - Consumes: existing `FB_TestSuite.GetNumberOfSkippedTests()` (INTERNAL, already present).
-- Produces: `ST_TestSuiteResult.NumberOfSkippedTests : UINT(...)`; `ST_TestSuiteResults.NumberOfSkippedTestCases : UINT`; invariant `NumberOfTestCases = Successful + Failed + Skipped`; xUnit root `tests` = total (was successful-only), root+suite `skipped` attributes. ADS text format unchanged (the printed successful number changes semantically — spec-approved bug fix, observation row 12). Adding struct fields grows the (padded) struct — no consumer memory issue, but note it compiles all consumers on next qualification.
+- Produces: `ST_TestSuiteResult.NumberOfSkippedTests : UINT(...)`; aggregate fields `NumberOfTestCases`/`NumberOfSuccessfulTestCases`/`NumberOfFailedTestCases`/`NumberOfSkippedTestCases` all **UDINT** (spec: count types from capacity products — 1000 suites x 100 tests exceeds UINT); invariant `NumberOfTestCases = Successful + Failed + Skipped`; xUnit root `tests` = total, root+suite `skipped` attributes. ADS text FORMAT unchanged (`UDINT_TO_STRING` prints identical digits; only the successful number's semantics changes — spec-approved, observation R6/G6). The .NET verifier is unaffected: it presence-checks lines and asserts only the failed count, and no verifier suite has skipped tests.
 
-- [ ] **Step 1: Add the per-suite skipped field**
-
-In `ST_TestSuiteResult.TcDUT`, after `NumberOfFailedTests`:
+- [ ] **Step 1: Per-suite skipped field** — in `ST_TestSuiteResult.TcDUT` after `NumberOfFailedTests`:
 
 ```iecst
     NumberOfSkippedTests : UINT(0..GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite);
 ```
 
-- [ ] **Step 2: Add the aggregate skipped field**
-
-In `ST_TestSuiteResults.TcDUT`, after `NumberOfFailedTestCases`:
+- [ ] **Step 2: UDINT aggregates** — in `ST_TestSuiteResults.TcDUT` replace the three aggregate testcase counters and add the fourth:
 
 ```iecst
-    NumberOfSkippedTestCases : UINT; // The total number of test cases that were skipped (disabled)
+    NumberOfTestCases : UDINT; // The total number of test cases (for all test suites)
+    NumberOfSuccessfulTestCases : UDINT; // The total number of test cases that had all ASSERTS successful
+    NumberOfFailedTestCases : UDINT; // The total number of test cases that had at least one ASSERT failed
+    NumberOfSkippedTestCases : UDINT; // The total number of test cases that were skipped (disabled)
 ```
 
-- [ ] **Step 3: Store and aggregate skipped counts in FB_TestResults**
+(`NumberOfTestSuites : UINT` stays — bounded by the UINT parameter `MaxNumberOfTestSuites`.)
 
-In the FB body, after the "Store number of failed tests in test suite" block, add:
+- [ ] **Step 3: FB_TestResults — store skipped, correct successful**
+
+After the "Store number of failed tests in test suite" block add:
 
 ```iecst
         // Store number of skipped tests in test suite
@@ -681,16 +1054,7 @@ In the FB body, after the "Store number of failed tests in test suite" block, ad
             GVL_TcUnit.TestSuiteAddresses[StoringTestSuiteResultNumber]^.GetNumberOfSkippedTests();
 ```
 
-In the aggregate FOR loop, replace:
-
-```iecst
-        TestSuiteResults.NumberOfSuccessfulTestCases := TestSuiteResults.NumberOfSuccessfulTestCases +
-                                                        (TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfTests -
-                                                         TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfFailedTests);
-        TestSuiteResults.NumberOfFailedTestCases := TestSuiteResults.NumberOfFailedTestCases + TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfFailedTests;
-```
-
-with:
+In the aggregate FOR loop, replace the successful/failed accumulation with:
 
 ```iecst
         (* A skipped test is not a successful test: total = passed + failed + skipped *)
@@ -702,160 +1066,192 @@ with:
         TestSuiteResults.NumberOfSkippedTestCases := TestSuiteResults.NumberOfSkippedTestCases + TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfSkippedTests;
 ```
 
-- [ ] **Step 4: Correct the xUnit attributes in FB_xUnitXmlPublisher**
+- [ ] **Step 4: FB_xUnitXmlPublisher — corrected attributes with UDINT conversions**
 
-Replace the root-element parameters:
-
-```iecst
-    Xml.NewParameter('failures', UINT_TO_STRING(UnitTestResults.NumberOfFailedTestCases));
-    Xml.NewParameter('tests', UINT_TO_STRING(UnitTestResults.NumberOfSuccessfulTestCases));
-    Xml.NewParameter('time', LREAL_TO_STRING(UnitTestResults.Duration));
-```
-
-with:
+Root element — replace the `failures`/`tests` parameter lines with:
 
 ```iecst
-    Xml.NewParameter('failures', UINT_TO_STRING(UnitTestResults.NumberOfFailedTestCases));
+    Xml.NewParameter('failures', UDINT_TO_STRING(UnitTestResults.NumberOfFailedTestCases));
     (* 'tests' is the TOTAL testcase count; the previous successful-only value was a bug *)
-    Xml.NewParameter('tests', UINT_TO_STRING(UnitTestResults.NumberOfTestCases));
-    Xml.NewParameter('skipped', UINT_TO_STRING(UnitTestResults.NumberOfSkippedTestCases));
-    Xml.NewParameter('time', LREAL_TO_STRING(UnitTestResults.Duration));
+    Xml.NewParameter('tests', UDINT_TO_STRING(UnitTestResults.NumberOfTestCases));
+    Xml.NewParameter('skipped', UDINT_TO_STRING(UnitTestResults.NumberOfSkippedTestCases));
 ```
 
-And the per-suite parameters — after the suite `failures` line:
-
-```iecst
-        Xml.NewParameter('failures', UINT_TO_STRING(UnitTestResults.TestSuiteResults[CurrentSuiteNumber].NumberOfFailedTests));
-```
-
-add:
+Suite element — after the suite `failures` line add:
 
 ```iecst
         Xml.NewParameter('skipped', UINT_TO_STRING(UnitTestResults.TestSuiteResults[CurrentSuiteNumber].NumberOfSkippedTests));
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: FB_AdsTestResultLogger — UDINT conversions**
+
+In the final-summary block, change the three aggregate conversions (`| Tests:`, `| Successful tests:`, `| Failed tests:` lines) from `UINT_TO_STRING(...)` to `UDINT_TO_STRING(...)`, and the same two fields inside the `TESTS FINISHED - ` TraceWithSeverity concatenation. Then sweep for stragglers:
+
+Grep `UINT_TO_STRING\(TcUnitTestResults\.NumberOf(TestCases|SuccessfulTestCases|FailedTestCases)` and `UINT_TO_STRING\(UnitTestResults\.NumberOf` across `TcUnit/TcUnit` — expected zero matches after the edits.
+
+- [ ] **Step 6: Commit**
 
 ```powershell
 cd C:\Users\scott\Documents\TcUnitFork
-git add TcUnit/TcUnit/DUTs/ST_TestSuiteResult.TcDUT TcUnit/TcUnit/DUTs/ST_TestSuiteResults.TcDUT TcUnit/TcUnit/POUs/FB_TestResults.TcPOU TcUnit/TcUnit/POUs/FB_xUnitXmlPublisher.TcPOU
-git commit -m "fix(xunit): total = passed + failed + skipped; root tests attribute reports total
+git add TcUnit/TcUnit/DUTs/ST_TestSuiteResult.TcDUT TcUnit/TcUnit/DUTs/ST_TestSuiteResults.TcDUT TcUnit/TcUnit/POUs/FB_TestResults.TcPOU TcUnit/TcUnit/POUs/FB_xUnitXmlPublisher.TcPOU TcUnit/TcUnit/POUs/FB_AdsTestResultLogger.TcPOU
+git commit -m "fix(xunit): total = passed + failed + skipped; UDINT aggregate counters; root tests attribute reports total
 
 - ST_TestSuiteResult.TcDUT: add NumberOfSkippedTests
-- ST_TestSuiteResults.TcDUT: add NumberOfSkippedTestCases
+- ST_TestSuiteResults.TcDUT: aggregate testcase counters widened to UDINT (capacity product 1000x100 exceeds UINT); add NumberOfSkippedTestCases
 - FB_TestResults.TcPOU: store per-suite skipped; successful no longer includes skipped
-- FB_xUnitXmlPublisher.TcPOU: root tests = total testcases (was successful-only); skipped attribute at root and suite level
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
+- FB_xUnitXmlPublisher.TcPOU: root tests = total testcases; skipped attribute at root and suite level; UDINT conversions
+- FB_AdsTestResultLogger.TcPOU: UDINT conversions for aggregate summary lines (text format unchanged)"
 ```
 
 ---
 
-### Task 8: Version bump 2026.7.17.1, USER ACTION — build and install the library
+### Task 10: Version bump, USER ACTION — build/install candidate, memory evidence
 
 **Files:**
-- Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\TcUnit.plcproj` (`<ProjectVersion>`, line ~35)
-- Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\Version\Global_Version.TcGVL` (line ~10)
-- Create (regenerated by XAE): `C:\Users\scott\Documents\TcUnitFork\TcUnit.library`
+- Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\TcUnit.plcproj` (`<ProjectVersion>`, ~line 35)
+- Modify: `C:\Users\scott\Documents\TcUnitFork\TcUnit\TcUnit\Version\Global_Version.TcGVL` (~line 10)
+- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md` (memory-evidence table)
 
 **Interfaces:**
-- Consumes: Tasks 5-7 source changes.
-- Produces: installed library `TcUnit 2026.7.17.1 (www.tcunit.org)`; git tag `TcUnit-2026.7.17.1`. This commit also resolves the long-standing working-tree deletion of `TcUnit.library` by committing the freshly built binary.
+- Consumes: Tasks 7-9 source changes.
+- Produces: **candidate** library 2026.7.17.1 installed locally. The `.library` binary and the git tag are deliberately NOT committed here — they land in Task 13 after evidence. This commit contains sources only.
 
 - [ ] **Step 1: Bump both version locations**
 
-In `TcUnit.plcproj`: `<ProjectVersion>2026.4.9.1</ProjectVersion>` → `<ProjectVersion>2026.7.17.1</ProjectVersion>`
+`TcUnit.plcproj`: `<ProjectVersion>2026.4.9.1</ProjectVersion>` → `<ProjectVersion>2026.7.17.1</ProjectVersion>`
 
-In `Global_Version.TcGVL`:
+`Global_Version.TcGVL`:
 
 ```iecst
 	stLibVersion_TcUnit : ST_LibVersion := (iMajor := 2026, iMinor := 7, iBuild := 17, iRevision := 1, nFlags := 0, sVersion := '2026.7.17.1');
 ```
 
-- [ ] **Step 2: USER ACTION — build and install in XAE**
+- [ ] **Step 2: USER ACTION — build, install, measure**
 
 Ask Scott to:
-1. Open `TcUnit.sln` in XAE.
-2. Build (Ctrl+Shift+B). Expected: 0 errors. If compile errors appear in Tasks 5-7 code, report them back verbatim — fix, and rebuild before continuing.
-3. Right-click PLC project → "Save as library and install..." → save as `C:\Users\scott\Documents\TcUnitFork\TcUnit.library` (repo root, replacing the deleted file).
-4. Confirm the library repository shows TcUnit 2026.7.17.1.
+1. Open `TcUnit.sln` in XAE; Build (Ctrl+Shift+B); expect 0 errors (compile failures come back verbatim for fixing before proceeding).
+2. Right-click PLC project → "Save as library and install..." → `C:\Users\scott\Documents\TcUnitFork\TcUnit.library` (repo root). Confirm the repository lists TcUnit 2026.7.17.1.
+3. Memory evidence: in a logged-in TwinCAT_Tests session (or the verifier project), read `SIZEOF(TcUnit.ST_TestSuiteResult)` and `SIZEOF(TcUnit.ST_TestSuiteResults)` (watch window accepts SIZEOF expressions; alternatively a temporary `nSize : UDINT := SIZEOF(...)` watch variable) — once against 2026.4.9.1 (before updating the resolution, i.e. now) and once against 2026.7.17.1 (during Task 12's first GREEN session). Record the TwinCAT_Tests build's allocated data size from the build output both times.
 
-- [ ] **Step 3: Commit and tag**
+- [ ] **Step 3: Commit sources only (no tag yet)**
 
 ```powershell
 cd C:\Users\scott\Documents\TcUnitFork
-git add TcUnit/TcUnit/TcUnit.plcproj TcUnit/TcUnit/Version/Global_Version.TcGVL TcUnit.library
-git commit -m "chore(release): TcUnit 2026.7.17.1 - step-0 fixes compiled and installed
+git add TcUnit/TcUnit/TcUnit.plcproj TcUnit/TcUnit/Version/Global_Version.TcGVL docs/verification/2026-07-17-step0-verification.md
+git commit -m "chore(release-candidate): TcUnit 2026.7.17.1 sources; library binary and tag follow GREEN evidence
 
 - TcUnit.plcproj: ProjectVersion 2026.7.17.1
 - Global_Version.TcGVL: stLibVersion_TcUnit 2026.7.17.1
-- TcUnit.library: rebuilt binary (also restores the previously deleted file)
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
-git tag TcUnit-2026.7.17.1
+- 2026-07-17-step0-verification.md: baseline SIZEOF measurements recorded"
 ```
 
 ---
 
-### Task 9: USER ACTION — GREEN run, golden capture, doc reconciliation
+### Task 11: USER ACTION — verifier gate against the candidate
 
 **Files:**
-- Modify: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests.plcproj` (`<Resolution>TcUnit, 2026.4.9.1 ...` line ~592)
-- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md` (GREEN column + results log)
-- Create: `C:\Users\scott\Documents\TcUnitFork\docs\verification\goldens\2026-07-17-step0-xunit-canonical.xml`
-- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\PROJECT_STATE.md`, `docs\EXECUTION_PLAN.md`, `docs\BREADCRUMBS.md`
+- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md` (results log + S1)
 
 **Interfaces:**
-- Consumes: installed 2026.7.17.1; Task 3 procedure; Task 4 RED baseline.
-- Produces: Step-0 acceptance evidence; committed golden; Phase 4a/4b closed in tracking docs; the next plan (compile/ABI spike) unblocked.
+- Consumes: installed candidate 2026.7.17.1; `TcUnit-Verifier_DotNet` (resolves `TcUnit, *` — picks up the candidate automatically); Task 4's `PRG_TEST_SEQUENCE`.
+- Produces: spec Level-2 gate evidence — "existing verifier runs unchanged" — plus the single-suite sequential check (S1). Task 12 must not start until both pass.
 
-- [ ] **Step 1: Point TwinCAT_Tests at the new library**
+- [ ] **Step 1: USER ACTION — run the existing verifier unchanged**
 
-In `TwinCAT_Tests.plcproj`: `<Resolution>TcUnit, 2026.4.9.1 (www.tcunit.org)</Resolution>` → `<Resolution>TcUnit, 2026.7.17.1 (www.tcunit.org)</Resolution>`
+Ask Scott to run TcUnit-Verifier_DotNet exactly as documented in `TcUnit-Verifier/` (builds TcUnit-Verifier_TwinCAT via the automation API, runs it, asserts the expected failed-test count and assertion texts). Expected: same result as its last known-good run — the count-semantics change does not alter it (no verifier suite has skipped tests; ADS line format unchanged). Any deviation is a STOP: diagnose before proceeding. If the verifier harness itself fails on infrastructure (its known reliability issues, see VERIFIER_IMPROVEMENT_PLAN.md), record the failure mode and fall back to building + activating TcUnit-Verifier_TwinCAT manually in XAE and comparing the ADS failed-count summary against the expectation constant in `TcUnit-Verifier_DotNet\TcUnit-Verifier\Program.cs` — record which path was used.
 
-- [ ] **Step 2: USER ACTION — GREEN run**
+- [ ] **Step 2: USER ACTION — single-suite sequential check (S1)**
 
-Ask Scott to repeat the Task 3 run recipe exactly. Every GREEN-column row must match — headline values: `AllTestSuitesFinished` = TRUE within 60 s; root `tests="8"`, `failures="1"`, `skipped="1"` (only the intentional fixture failure remains); the out-of-context wait trace appears exactly once.
+Per the PRG_TEST_SEQUENCE header: exclude `PRG_TEST` from build, assign PlcTask to `PRG_TEST_SEQUENCE`, run, verify `AllTestSuitesFinished` = TRUE with exactly 1 registered suite, then restore `PRG_TEST`. Record S1.
 
-- [ ] **Step 3: Capture the golden**
+- [ ] **Step 3: Commit**
 
 ```powershell
-pwsh -File C:\Users\scott\Documents\TcUnitFork\docs\verification\Canonicalize-XUnit.ps1 -Path C:\tcunit_xunit_testresults.xml -OutPath C:\Users\scott\Documents\TcUnitFork\docs\verification\goldens\2026-07-17-step0-xunit-canonical.xml
+cd C:\Users\scott\Documents\TcUnitFork
+git add docs/verification/2026-07-17-step0-verification.md
+git commit -m "docs(step0): verifier gate passed against candidate 2026.7.17.1
+
+- 2026-07-17-step0-verification.md: existing verifier green unchanged; single-suite sequential check S1 recorded"
 ```
 
-Then Read the golden and verify the attribute rows (7-11) against the table before committing.
+---
 
-- [ ] **Step 4: Record results and reconcile docs**
+### Task 12: USER ACTION — GREEN runs, script verification, golden capture
 
-- Fill GREEN column + results log in the verification doc.
-- `PROJECT_STATE.md`: Phase 4 row → Done (hardened + verified); tech-debt items for `_nActiveTimedTestIdx`, `GetTimedTestResult` trim, missing Phase 4 validation, and `RUN_IN_SEQUENCE` verifier path → resolved (strikethrough with date); "What is Active" row updated.
-- `EXECUTION_PLAN.md`: Phase 4a/4b → Completed Work table; Phase 5 step 1 (compile/ABI spike) becomes "What to Build Next"; Phase 5 implementation-sequence item 1 marked done.
-- `BREADCRUMBS.md`: update gotcha #19 solution line (fixed 2026-07-17, regression = PRG_TEST_TCUNIT_STEP0 campaign + golden); add gotcha: timed wait context is cycle-guarded — a bare wait in the same scan directly after an executing block remains undetectable by design; document the `disabled_` prefix ↔ skipped-count semantics and the corrected root `tests` attribute as an intentional divergence from upstream.
+**Files:**
+- Modify: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests.plcproj` (`<Resolution>TcUnit, 2026.4.9.1 ...`, ~line 592)
+- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\verification\2026-07-17-step0-verification.md` (G1-G8, A1, memory table, results log)
+- Create: `C:\Users\scott\Documents\TcUnitFork\docs\verification\goldens\2026-07-17-step0-regression-canonical.xml`
+- Create: `C:\Users\scott\Documents\TcUnitFork\docs\verification\goldens\2026-07-17-step0-counts-canonical.xml`
 
-- [ ] **Step 5: Commit both repos**
+**Interfaces:**
+- Consumes: candidate library; Task 5 recipes and script; Task 6 RED baseline.
+- Produces: GREEN evidence for all campaigns (script exit 0), abort behavior (A1), memory after-measurements, committed canonical goldens. Task 13 must not start until everything is green.
+
+- [ ] **Step 1: Point TwinCAT_Tests at the candidate**
+
+`<Resolution>TcUnit, 2026.4.9.1 (www.tcunit.org)</Resolution>` → `<Resolution>TcUnit, 2026.7.17.1 (www.tcunit.org)</Resolution>`
+
+- [ ] **Step 2: USER ACTION — GREEN campaign runs**
+
+Per the recipe, in order: REGRESSION (`-Phase GREEN -OutCanonical ...step0-regression-canonical.xml`), COUNTS (`-OutCanonical ...step0-counts-canonical.xml`), EDGE (no golden — its value is the traversal checks), then the abort phase A1 (rerun REGRESSION, online-write `AbortRunningTestSuites := TRUE` while `Test_Ordered1_Wait` is waiting, verify latch + ABORTED trace, delete the xUnit file afterward). Record G1-G8, A1, and the after-column of the memory table (SIZEOF + build allocated size).
+
+- [ ] **Step 3: Verify and record**
+
+All script runs exit 0; Read both canonical goldens and sanity-check them against the model (root `tests="8"`/`failures="0"`/`skipped="0"` for REGRESSION; `tests="4"`/`failures="1"`/`skipped="1"` for COUNTS). Fill every remaining `_pending_` cell.
+
+- [ ] **Step 4: Commit (TcUnitFork docs only — the TwinCAT_Tests resolution commit lands in Task 13 with the release)**
+
+```powershell
+cd C:\Users\scott\Documents\TcUnitFork
+git add docs/verification/2026-07-17-step0-verification.md docs/verification/goldens
+git commit -m "docs(step0): GREEN evidence recorded; canonical goldens committed
+
+- 2026-07-17-step0-verification.md: G1-G8, A1, S1, memory table complete; all script runs exit 0
+- goldens/: REGRESSION and COUNTS canonical baselines for the Phase 5 refactor"
+```
+
+---
+
+### Task 13: Release — library binary, tag, doc reconciliation
+
+**Files:**
+- Commit (already regenerated in Task 10): `C:\Users\scott\Documents\TcUnitFork\TcUnit.library`
+- Modify: `C:\Users\scott\Documents\TcUnitFork\docs\PROJECT_STATE.md`, `docs\EXECUTION_PLAN.md`, `docs\BREADCRUMBS.md`
+- Commit (edited in Task 12): TwinCAT_Tests plcproj resolution
+
+**Interfaces:**
+- Consumes: full evidence chain (RED → fixes → candidate → verifier gate → GREEN + goldens).
+- Produces: released `TcUnit-2026.7.17.1`; both repos reconciled; the next plan (compile/ABI spike) unblocked.
+
+- [ ] **Step 1: Reconcile the tracking docs**
+
+- `PROJECT_STATE.md`: Phase 4 row → Done (hardened + verified 2026-07-17); strike resolved tech-debt items (`_nActiveTimedTestIdx` guard, `GetTimedTestResult` trim, missing Phase 4 validation, `RUN_IN_SEQUENCE` verifier path); update "What is Active"; current version 2026.7.17.1.
+- `EXECUTION_PLAN.md`: Phase 4a/4b → Completed Work; Phase 5 step 1 (compile/ABI spike) becomes "What to Build Next"; sequence item 1 marked done.
+- `BREADCRUMBS.md`: gotcha #19 solution updated (fixed 2026-07-17; regression = step-0 campaigns + goldens + verifier S1). New gotchas: (a) timed wait context is cycle-guarded — a bare wait in the same scan directly after an executing block remains undetectable by design; (b) every compiled PRG's suites register at PLC start — campaign counts come only from the active PRG, and the verifier script asserts non-campaign suites report zero tests; (c) root xUnit `tests` now reports the total (intentional divergence from the upstream successful-only value) and `disabled_` tests surface in the `skipped` counts.
+- Project `CLAUDE.md` version reference (currently says 2026.3.3.3): update to 2026.7.17.1.
+
+- [ ] **Step 2: Release commit and tag (TcUnitFork)**
+
+```powershell
+cd C:\Users\scott\Documents\TcUnitFork
+git add TcUnit.library docs/PROJECT_STATE.md docs/EXECUTION_PLAN.md docs/BREADCRUMBS.md CLAUDE.md
+git commit -m "chore(release): TcUnit 2026.7.17.1 - step-0 fixes released after GREEN + verifier evidence
+
+- TcUnit.library: rebuilt binary (also restores the previously deleted file)
+- PROJECT_STATE.md / EXECUTION_PLAN.md / BREADCRUMBS.md: Phase 4a/4b closed; gotcha #19 resolved; new gotchas recorded; next: compile/ABI spike
+- CLAUDE.md: current version reference updated"
+git tag TcUnit-2026.7.17.1
+```
+
+- [ ] **Step 3: Consumer commit (TwinCAT_Tests)**
 
 ```powershell
 cd C:\Users\scott\Documents\TwinCAT_Tests
 git add TwinCAT_Tests/TwinCAT_Tests/TwinCAT_Tests.plcproj
 git commit -m "chore(tcunit-step0): consume TcUnit 2026.7.17.1
 
-- TwinCAT_Tests.plcproj: TcUnit resolution 2026.4.9.1 -> 2026.7.17.1
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
-
-cd C:\Users\scott\Documents\TcUnitFork
-git add docs/verification/2026-07-17-step0-verification.md docs/verification/goldens/2026-07-17-step0-xunit-canonical.xml docs/PROJECT_STATE.md docs/EXECUTION_PLAN.md docs/BREADCRUMBS.md
-git commit -m "docs(step0): GREEN run recorded, golden committed, Phase 4a/4b closed
-
-- 2026-07-17-step0-verification.md: all 13 observations green against 2026.7.17.1
-- goldens/2026-07-17-step0-xunit-canonical.xml: Level 2 baseline for the Phase 5 refactor
-- PROJECT_STATE.md / EXECUTION_PLAN.md / BREADCRUMBS.md: Phase 4a/4b complete; next: compile/ABI spike
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
+- TwinCAT_Tests.plcproj: TcUnit resolution 2026.4.9.1 -> 2026.7.17.1"
 ```
 
 ---
@@ -863,6 +1259,6 @@ Claude-Session: https://claude.ai/code/session_01EoFvrbvCLLZNw4VWSCLxi6"
 ## Out of scope (deferred to later plans in the series)
 
 - `<skipped/>` child elements, UTF-8/control-char/decimal formatting contract → reporting-pipeline plan (spec step 6).
-- TcUnit-Verifier_DotNet expectation updates → verifier plan (the verifier is not currently the active validation path; VERIFIER_IMPROVEMENT_PLAN.md tracks its modernization).
+- Fully .NET-automated `RUN_IN_SEQUENCE` verifier configuration → verifier plan (Task 4's committed check is its precursor).
 - TwinCATBase ring-buffer multi-writer audit → TwinCATBase repo (external production gate).
 - All coordinator/tagging/multi-task work → spec steps 1-8 plans.
