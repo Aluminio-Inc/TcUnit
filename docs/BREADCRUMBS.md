@@ -109,7 +109,7 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 
 **Symptom**: A late tag is never picked up, a runner finishes with zero suites, a tag string tears while another task reads it, or two tasks both claim and execute one suite.
 **Cause**: Cyclic `SetTag()` writes plus runtime scan/check/set claiming mix configuration mutation with concurrent execution.
-**Solution**: `SetTag()` captures owner raw task and normalized tag once under coordinator registration. Runners register/latch once. When all expected tasks arrive, validate the entire topology, build immutable registry-index plans, and seal. Execute only after a valid seal and take no coordinator lock in test bodies/assertions.
+**Solution**: `SetTag()` captures owner raw task and normalized tag once under coordinator registration. Runners register/latch once. When all expected tasks arrive, freeze registration briefly under the lock, build immutable registry-index plans *outside* the lock (never scan 1,000 suites in a cross-task critical section), and publish the sealed generation under the lock. Execute only after every runner has acknowledged the plan generation and the report coordinator has opened the execution gate; take no coordinator lock in test bodies/assertions.
 
 ### 18. Never Put the Full Result Snapshot in Every Task Runner
 
@@ -127,7 +127,13 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 
 **Symptom**: CI merges stale shards, reads a partial file, misses a slow task, or treats a configuration-conflict empty shard as green.
 **Cause**: Independent tag-only filenames provide neither uniqueness nor an all-writers-complete signal.
-**Solution**: Shard names include normalized tag plus raw task index. One report coordinator writes temporary shards, closes/replaces them, and writes an authoritative manifest last. Downstream tooling merges only manifest-listed shards. Infrastructure/configuration errors publish a failed framework testcase when possible.
+**Solution**: Shard names include normalized tag plus raw task index. One report coordinator writes temporary shards, closes/replaces them, and writes an authoritative manifest last. A fresh `RunId` is published in PLC status before execution and embedded in every shard and the manifest; automation accepts only a manifest with the current `RunId`, `publicationComplete = true`, and an explicit `outcome` — file presence alone is never success, and an old successful manifest must be invalidated in preflight. Downstream tooling merges only manifest-listed shards. Infrastructure/configuration errors publish a failed framework testcase when possible.
+
+### 21. "Immutable" Does Not Mean "Visible" Across Cores, and a Stopped Task Cannot Time Itself Out
+
+**Symptom**: A reporter on another core reads a stale or torn view of "finished" suite state; a stopped test task hangs the run forever because its own timeout timer never executes.
+**Cause**: Declaring data immutable provides no cross-core memory-ordering guarantee, and any self-evaluated deadline requires the task to still be running.
+**Solution**: Two synchronized handoffs carry all cross-task ordering: runners acknowledge the published plan generation before the execution gate opens, and each task publishes a one-shot quiescence record after its final suite-state write. The reporter reads suite state only from quiesced tasks and represents unresponsive tasks with a synthetic infrastructure result (never a partial shard). Detection of a stopped task belongs to *another* clock: a reporter-owned global execution deadline, plus an external verifier watchdog for the case where the reporter itself (or everything) stops. See the Phase 5 design spec §E–§F.
 
 ---
 

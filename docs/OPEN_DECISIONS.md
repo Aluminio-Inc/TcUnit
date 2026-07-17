@@ -269,8 +269,10 @@ output files. Full design: [2026-07-16-multitask-tagged-execution-design.md](./s
 **Rationale**: Tagging and multi-task support solve each other — suites cannot self-detect their
 home task (FB_init runs outside task context), so explicit tags from the owning PRG are the
 partitioning mechanism, and the same tags provide single-task selective execution. Test-author
-APIs are untouched; single-task plain `RUN()` behavior is byte-identical (backward compat proof =
-existing verifier stays green).
+APIs are untouched; single-task plain `RUN()` remains source-compatible and behaviorally
+equivalent except for documented bug fixes (e.g., corrected xUnit count semantics) — internal
+layout may change (backward compat proof = existing verifier stays green against canonicalized
+goldens with explicitly approved differences).
 
 **Consequences/gaps**: ~40-50 mechanical `GVL_TcUnit` reference changes; memory footprint scales
 with `MaxNumberOfTestTasks` (GVL-parameter-tunable); rollout gated on a TwinCATBase ring-buffer
@@ -340,6 +342,22 @@ not a 40-50-site mechanical edit. It requires a coordinator, task contexts, stat
 plan-driven runner refactors, a memory-safe reporting path, a committed multi-task verifier, and a
 consumer symbol/API audit. Multi-task production enablement remains gated on TwinCATBase
 multi-writer safety. Per-test execution throttling remains separate and complementary.
+
+**Subsequent refinement (spec Revision 3, 2026-07-16)**: An implementation-readiness review kept
+the architecture but made its concurrency, liveness, external-observation, and failure guarantees
+precise enough to test rather than infer. Additions: explicit cross-task publication barriers
+(plan acknowledgement before a reporter-owned execution gate; per-task quiescence records before
+any reporter read of suite state); a `Sealing` phase that builds plans outside the critical
+section; deterministic slot assignment by sorted raw task index with the lowest raw task as report
+coordinator; a reporter-clock global execution deadline distinguishing *TimedOutAndQuiesced* from
+*Unresponsive* plus an external verifier watchdog and reset-before-rerun rule; a run-epoch
+(`RunId`) handshake with output preflight, `publicationComplete`, and explicit `outcome` so stale
+success is unrepresentable; a versioned seqlock-protected status GVL splitting task-owned from
+reporter-owned fields; mandatory streaming shard publication with a per-scan work budget; a
+complete selection/empty-run truth table (plain `RUN()` valid only when no suite called
+`SetTag()`; tagged runs fail on zero executed tests); a named JUnit-style XML/JSON-Schema
+reporting contract; and verification upgrades (injectable seams, reference state-machine model,
+metamorphic and crash-cut tests, recorded stress counts, requirements traceability table).
 
 ---
 

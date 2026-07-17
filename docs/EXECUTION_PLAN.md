@@ -58,12 +58,13 @@
 ### Phase 5: Multi-Task Tagged Execution
 
 **Value**: High | **Effort**: Large | **Prerequisites**: Phase 4a/4b, sequential-runner regression, TwinCATBase multi-writer audit before production enablement
-**Status**: Revised design approved by ADR-004/ADR-005; implementation after Phase 4b
+**Status**: Design at Revision 3 (ADR-004/ADR-005 plus implementation-readiness review); implementation after Phase 4b
 
-Implement selective suite tags and safe multi-task execution using compact raw-task-to-slot
-registration, coordinator-sealed immutable execution plans, task-owned mutable contexts,
-machine-readable failure/status, memory-safe result handling, centrally published per-task xUnit
-shards, and an authoritative manifest.
+Implement selective suite tags and safe multi-task execution using deterministic raw-task-to-slot
+registration, coordinator-sealed immutable execution plans with explicit plan/quiescence
+publication barriers, a reporter-owned execution gate and run epoch (`RunId`), task-owned mutable
+contexts, a versioned torn-read-safe status GVL, memory-safe result handling, centrally streamed
+per-task JUnit-style shards, and an authoritative manifest with `publicationComplete`/`outcome`.
 
 Detailed design:
 [2026-07-16-multitask-tagged-execution-design.md](./superpowers/specs/2026-07-16-multitask-tagged-execution-design.md)
@@ -72,12 +73,17 @@ Implementation sequence:
 
 1. Fix and commit `RUN_IN_SEQUENCE` completion coverage and correct xUnit count semantics
 2. Run the XAE compile/memory/ABI spike
-3. Add coordinator, status/error DUTs, compact task registration, and task contexts
+3. Add coordinator (with `Sealing` phase), numbered status/error enums, versioned status GVL,
+   injectable seams, deterministic task registration, and task contexts
 4. Migrate every mutable global/function-static reference while keeping one-task verifier green
-5. Add immutable suite assignment/planning and single-task tagged selection
+5. Add immutable suite assignment/planning, the selection truth table, publication barriers,
+   execution gate, and single-task tagged selection
 6. Refactor both run modes over the common plan and enable multi-task execution
-7. Replace per-task full result snapshots with immutable suite readers and central shard/manifest reporting
-8. Add committed two-task verifier, negative fault injection, static analysis, stress, memory, cycle-time, and core-placement evidence
+7. Replace per-task full result snapshots with quiescence-gated suite readers, `RunId` preflight,
+   streaming shard publication, and manifest with committed JSON Schema
+8. Add committed two-task verifier: reference state-machine model, seam-driven fault injection,
+   crash-cut/metamorphic tests, static analysis, recorded-count stress, memory, cycle-time, and
+   core-placement evidence; complete the requirements traceability table
 9. Qualify all Photara consumers, update docs, bump version, and rebuild/install the library
 
 **Acceptance**: All acceptance gates in the revised design spec are mandatory. In particular, no

@@ -12,7 +12,7 @@ TcUnit is an open-source unit testing framework for TwinCAT 3 (IEC 61131-3 Struc
 
 ## Current State Summary
 
-7 FBs extended with FB_BaseStatic, centralized assert failure tracing in LogAssertFailure, test lifecycle and run lifecycle tracing, Phases 1-3 complete. Phase 4 (FB_TimedTestSuite) is implemented and spec-reviewed on `feat/timed-test-suite`, but a post-implementation audit found two follow-up hardening items plus missing validation coverage before XAE sign-off. Phase 5 multi-task tagged execution is now decided by ADR-004/ADR-005 and has a revised implementation-grade design; implementation remains gated behind Phase 4a/4b and prerequisite concurrency/runner verification.
+7 FBs extended with FB_BaseStatic, centralized assert failure tracing in LogAssertFailure, test lifecycle and run lifecycle tracing, Phases 1-3 complete. Phase 4 (FB_TimedTestSuite) is implemented and spec-reviewed on `feat/timed-test-suite`, but a post-implementation audit found two follow-up hardening items plus missing validation coverage before XAE sign-off. Phase 5 multi-task tagged execution is decided by ADR-004/ADR-005; the design passed an implementation-readiness review and is at Revision 3 (publication barriers, deterministic slots, run-epoch completion contract, streaming reporting, reference-model verification); implementation remains gated behind Phase 4a/4b and prerequisite concurrency/runner verification.
 
 ---
 

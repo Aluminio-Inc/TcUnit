@@ -1,8 +1,8 @@
 # Multi-Task Tagged Test Execution — Revised Design Spec
 
 **Date**: 2026-07-16
-**Revision**: 2
-**Status**: Approved revised design; implementation not started
+**Revision**: 3
+**Status**: Revised per implementation-readiness review; awaiting approval; implementation not started
 **Depends on**: Phase 4a/4b (timed-suite hardening and XAE verification), sequential-runner regression coverage, and the TwinCATBase multi-writer audit
 **Decisions**: ADR-004 chooses tagged selective execution plus multi-task support; ADR-005 refines task registration, ownership, synchronization, result storage, and reporting
 **Target**: TwinCAT 3.1.4026.x, with the exact supported build floor recorded after the compile spike
@@ -17,14 +17,22 @@ execution become separate phases:
 
 1. Each owning test PRG calls `SetTag()` before its first `RUN*()` call. The call records both the
    suite's normalized tag and the raw PLC task index of the caller.
-2. Each test task registers once with a global coordinator. The coordinator maps sparse raw PLC
-   task indices to compact TcUnit task slots.
-3. When every expected test task has registered, the coordinator validates the complete topology,
-   creates an immutable ordered execution plan for each task, and seals configuration.
-4. After sealing, each test task touches only its own task context, suites, CPU counter, and ADS
-   queue. No lock is taken in the test execution path.
-5. When all test tasks finish, one designated report coordinator reads the now-immutable suite
-   state and publishes deterministic per-task xUnit shards followed by an authoritative manifest.
+2. Each test task registers once with a global coordinator. Registrations are collected keyed by
+   raw PLC task index.
+3. When every expected test task has registered, the coordinator briefly freezes registration,
+   builds and validates immutable per-task execution plans outside the critical section, assigns
+   deterministic compact task slots (positive raw indices sorted ascending), and publishes the
+   sealed plan generation. The lowest raw task index becomes the report coordinator.
+4. Every runner observes the published plan generation through the coordinator and acknowledges
+   it. The report coordinator then performs output preflight (fresh `RunId`, exact stale-output
+   invalidation), starts the aggregate clock, and opens the synchronized execution gate.
+5. After the gate opens, each test task touches only its own task context, suites, CPU counter,
+   and ADS queue. No lock is taken in the test execution path.
+6. Each task publishes a one-shot quiescence record through the coordinator after its final
+   suite-state write. The report coordinator reads suite state only from quiesced tasks.
+7. When all tasks are quiesced (or the reporter-clock execution deadline expires), the report
+   coordinator streams deterministic per-task xUnit shards and finally an authoritative manifest
+   carrying the run's `RunId`, `publicationComplete`, and `outcome`.
 
 Configuration and infrastructure errors fail closed. They are exposed as machine-readable run
 status and, when xUnit output is enabled, as a synthetic failed framework testcase. A configuration
@@ -124,8 +132,13 @@ The implementation follows these principles, in order:
 | Owner task | The raw task index captured by the suite's first valid `SetTag()` call, or assigned to the sole legacy runner during sealing. |
 | Execution tag | A normalized, filename-safe suite selection label. Empty is reserved for legacy run-all mode. |
 | Execution plan | The immutable registry-index list selected for one task slot, in global registration order. |
-| Shard | One xUnit XML document containing the suites in one task's execution plan. |
+| Shard | One JUnit-style XML document containing the suites in one task's execution plan. |
 | Infrastructure failure | A TcUnit configuration, runtime, capacity, synchronization, or reporting error—not a user assertion failure. |
+| Plan generation | The one-shot sealed configuration published by the coordinator; runners acknowledge it before execution. |
+| Execution gate | The synchronized one-shot signal, opened by the report coordinator after preflight, that allows runners to begin executing their plans. |
+| Quiescence | A task's one-shot coordinator record, published after its final suite-state write, stating it will write no further test state this run. |
+| Report coordinator | The task on the lowest positive raw task index; owns preflight, the execution gate, the aggregate clock, shard publication, and the manifest. |
+| RunId | An opaque identifier generated once per activation/run; published in PLC status before the gate opens and embedded in every shard and the manifest. |
 
 Beckhoff documents `GETCURTASKINDEXEX()` as returning `-1` in Windows context, `0` in non-cyclic
 real-time context (including automatic `FB_init`), and `1..n` in a cyclic PLC task. The returned
@@ -196,36 +209,87 @@ Runner registration contract:
 
 ### Machine-readable status
 
-Add a stable, read-only status model for verifier/automation use:
+The public status ABI is a versioned, symbol-readable GVL (`GVL_TcUnitStatus`) — not getter
+functions. ADS clients read structures containing strings, counters, and `LREAL` values, so a raw
+read can observe a torn update. Every externally published structure therefore uses a
+sequence-validated snapshot protocol: the writer increments `StatusSequence` to an odd value,
+writes the snapshot, then increments to the next even value; the reader copies the structure,
+re-reads the sequence, and retries on mismatch or odd value. (A double-buffered published
+generation is an acceptable equivalent; the compile spike picks one and the choice is frozen.)
+
+All published enums (`E_TcUnitRunMode`, `E_TcUnitRunPhase`, `E_TcUnitErrorCode`) carry explicit
+stable numeric values, frozen at first release. New values may be appended; existing values never
+change meaning.
+
+Status is split by owner. Task-owned execution status is written only by the owning task;
+publication status is written only by the report coordinator. `ShardPublished`/`ShardPath` are
+deliberately not task-owned fields.
 
 ```iecst
-TYPE ST_TcUnitTaskRunStatus :
+TYPE ST_TcUnitAggregateStatus :
+STRUCT
+    StatusSchemaVersion     : UINT;            // constant per library release
+    StatusSequence          : UDINT;           // seqlock: even = consistent
+    RunId                   : STRING(32);      // fresh per activation, before gate opens
+    Phase                   : E_TcUnitRunPhase;
+    PrimaryErrorCode        : E_TcUnitErrorCode;
+    FirstErrorPhase         : E_TcUnitRunPhase;
+    ErrorCount              : UDINT;
+    ExpectedTasks           : UINT;
+    RegisteredTasks         : UINT;
+    AcknowledgedTasks       : UINT;
+    QuiescedTasks           : UINT;
+    DiscoveredSuites        : UDINT;           // all registered suites
+    SelectedSuites          : UDINT;           // in some execution plan
+    ExcludedSuites          : UDINT;           // discovered - selected
+    TotalTests              : UDINT;
+    PassedTests             : UDINT;
+    FailedTests             : UDINT;
+    SkippedTests            : UDINT;
+    ExecutionDurationSec    : LREAL;           // seconds, reporter clock, gate-open → last quiescence
+    ReportingDurationSec    : LREAL;           // seconds
+    OutputEnabled           : BOOL;            // xUnitEnablePublish at seal
+    PublishedShards         : UINT;
+    PublicationComplete     : BOOL;
+    ManifestPublished       : BOOL;
+END_STRUCT
+END_TYPE
+
+TYPE ST_TcUnitTaskExecutionStatus :   // written only by the owning task
 STRUCT
     Slot                    : UINT;
     RawTaskIndex            : DINT;
     CpuCoreIndex            : DINT;
     Tag                     : STRING(32);
     RunMode                 : E_TcUnitRunMode;
-    Phase                   : E_TcUnitRunPhase;
-    ConfigurationError      : E_TcUnitConfigurationError;
-    InfrastructureFailed    : BOOL;
+    RunnerState             : E_TcUnitRunnerState;
+    PrimaryErrorCode        : E_TcUnitErrorCode;
     SelectedSuites          : UDINT;
     FinishedSuites          : UDINT;
     TotalTests              : UDINT;
     PassedTests             : UDINT;
     FailedTests             : UDINT;
     SkippedTests            : UDINT;
-    Duration                : LREAL;
+    ExecutionDurationSec    : LREAL;           // seconds, task-local clock
+    Quiesced                : BOOL;
+    QuiescedAfterTimeout    : BOOL;            // TimedOutAndQuiesced
+END_STRUCT
+END_TYPE
+
+TYPE ST_TcUnitTaskPublicationStatus : // written only by the report coordinator
+STRUCT
     ShardPublished          : BOOL;
+    ShardOutcome            : E_TcUnitShardOutcome;  // Published, WithheldUnresponsive, WithheldError, Disabled
     ShardPath               : T_MaxString;
 END_STRUCT
 END_TYPE
 ```
 
-Also expose aggregate phase/status, expected/registered/completed task counts, and manifest state.
-The exact public accessor may be a read-only GVL status array or getter functions, but it must be
-stable, symbol-accessible, and tested by the .NET verifier. Automation must not need to infer
-completion by scraping ADS text.
+A single error-code enum with `PrimaryErrorCode`, `FirstErrorPhase`, and `ErrorCount` replaces the
+earlier `ConfigurationError` + `InfrastructureFailed : BOOL` pair, which could not represent the
+runtime and reporting error codes listed in the failure model. All duration fields are explicitly
+seconds. The .NET verifier reads this GVL by symbol name and must not infer completion by scraping
+ADS text.
 
 ---
 
@@ -257,16 +321,53 @@ must not be simulated with comma-delimited strings.
 
 | Mode | Conditions | Selection and validation |
 |---|---|---|
-| Legacy run-all | `ExpectedNumberOfTestTasks = 1`, runner tag empty | All registered suites are assigned to and executed by the sole runner. Existing suites need no `SetTag()`. |
-| Single-task selective | `ExpectedNumberOfTestTasks = 1`, runner tag non-empty | Execute suites owned by the caller whose tag matches. Untagged/nonmatching suites are intentionally idle. Zero matches is a configuration failure. |
+| Legacy run-all | `ExpectedNumberOfTestTasks = 1`, runner tag empty, **zero suites called `SetTag()`** | All registered suites are assigned to and executed by the sole runner. |
+| Single-task selective | `ExpectedNumberOfTestTasks = 1`, runner tag non-empty | Execute suites owned by the caller whose tag matches. Untagged and nonmatching suites are intentionally excluded and recorded as such. Zero selected suites is a configuration failure. |
 | Multi-task | `ExpectedNumberOfTestTasks > 1`, every runner tag non-empty | Every registered suite must have one valid owner and must match the tag latched by a runner on that owner task. Every runner must select at least one suite. |
 
-Plain `RUN()` is invalid when more than one test task is expected. A mixed plain/tagged topology is
-rejected before any suite body executes.
+Plain legacy `RUN()` is valid **only when no suite in the project has called `SetTag()`**. Any
+`SetTag()` call combined with a plain empty-tag runner — in any task count — is
+`MixedLegacyAndMultiTaskMode`. A legacy runner never silently absorbs or overrides a captured
+owner. Plain `RUN()` is likewise invalid when more than one test task is expected. All mixed
+topologies are rejected at seal, before any suite body executes.
 
-In multi-task mode, an unowned suite, a suite whose owner has no registered runner, or a suite whose
-tag does not match its owner's runner is a failure. This prevents accidentally omitted suites from
-making the distributed run appear green.
+### Selection truth table
+
+Behavior of every suite state in every mode ("owner" is the raw task captured by `SetTag()`;
+"runner" is the task evaluating the row):
+
+| Suite state | Legacy run-all | Single-task selective | Multi-task |
+|---|---|---|---|
+| Untagged (never called `SetTag()`) | Selected | Excluded (reason `Untagged`) | Configuration failure `UnownedSuite` |
+| Tagged, owner = runner task, tag matches runner | Configuration failure `MixedLegacyAndMultiTaskMode` | Selected | Selected |
+| Tagged, owner = runner task, tag does not match runner | Configuration failure `MixedLegacyAndMultiTaskMode` | Excluded (reason `TagMismatch`) | Configuration failure `SuiteTagDoesNotMatchOwnerRunner` |
+| Tagged, owner is a different task, tag matches this runner | Configuration failure `MixedLegacyAndMultiTaskMode` | Configuration failure `SuiteWithoutRunner` (no runner on the owner task) | Selected by the owner's runner if the tag also matches there — never by this runner; otherwise configuration failure `SuiteTagDoesNotMatchOwnerRunner` |
+| Tagged, owner is a different task, tag matches no runner | Configuration failure `MixedLegacyAndMultiTaskMode` | Configuration failure `SuiteWithoutRunner` | Configuration failure: `SuiteWithoutRunner` if the owner task has no runner, else `SuiteTagDoesNotMatchOwnerRunner` |
+
+Single-task selective mode is intentional partial selection: same-owner suites with a nonmatching
+tag are deliberate exclusions (reason `TagMismatch`), not errors. Multi-task mode is fail-closed
+total coverage: every registered suite must be owned, matched, and planned, so the same condition
+is a configuration failure there. Exclusions are recorded per suite with a reason code and
+surfaced as counts plus a per-suite list in the manifest; excluded suites are never merely
+omitted.
+
+### Empty-run semantics
+
+These four conditions are distinct and separately reported:
+
+1. **Zero suites selected** — a tagged or multi-task runner whose plan is empty:
+   configuration failure `RunnerHasNoSuites`.
+2. **A selected suite contains zero tests** — the suite executes, finishes with zero tests, and is
+   reported with zero counts (existing empty-suite trace retained). Not itself a failure.
+3. **An aggregate run executes zero tests** — tagged and multi-task runs fail with
+   `ZeroTestsExecuted`. Legacy run-all keeps its current behavior by default; the parameter
+   `FailOnZeroTests : BOOL := FALSE` opts legacy mode into the same rule.
+4. **Intentionally excluded suites** — recorded with exclusion reasons (`Untagged`, `TagMismatch`)
+   in status counts and the manifest; excluded suites are not executed and not counted as skipped
+   tests.
+
+No combination of these may produce a green run for a tagged or multi-task configuration that
+executed nothing.
 
 ### Consumer concurrency contract
 
@@ -307,27 +408,48 @@ Add one `FB_TcUnitCoordinator` instance responsible for configuration and one-sh
 transitions. It owns:
 
 - a short critical-section primitive;
-- coordinator phase (`Open`, `SealedValid`, `SealedInvalid`, `Executing`, `Reporting`, `Complete`);
-- raw-task-to-slot mappings;
+- coordinator phase (`Open`, `Sealing`, `SealedValid`, `SealedInvalid`, `AwaitingAcknowledgement`,
+  `Preflight`, `Executing`, `Reporting`, `Complete` — explicitly numbered, frozen at release);
+- registration records collected keyed by raw task index;
+- raw-task-to-slot mappings (final, assigned deterministically at seal);
 - latched runner registration records;
 - suite assignment records keyed by registry index;
+- the published plan generation and per-task acknowledgement records;
 - immutable execution plans;
-- per-task completion/reporting flags;
+- the execution gate;
+- per-task quiescence and reporting records;
 - aggregate infrastructure status and stable error codes;
-- report coordinator election (slot 1 unless explicitly changed in a future API);
+- report coordinator election (the task with the lowest positive raw index, i.e. slot 1);
 - authoritative manifest state.
 
-The coordinator's shared mutation methods are synchronized. The lock is used only for:
+The coordinator's shared mutation methods are synchronized, and the critical section is kept
+short by construction. The lock is entered only for:
 
-- first/repeated suite registration;
-- first/repeated runner registration;
-- configuration sealing;
-- one-shot task execution completion;
-- one-shot shard publication completion;
+- first suite registration (`SetTag`) and first runner registration;
+- freezing registration at the start of sealing;
+- publishing the finished plan generation at the end of sealing;
+- one-shot plan acknowledgement per task;
+- one-shot execution-gate open;
+- one-shot quiescence publication per task;
+- one-shot shard/manifest publication completion;
 - one-shot infrastructure failure publication.
 
+Two categories of work are explicitly kept **outside** the lock:
+
+1. **Cyclic idempotency.** Repeated `SetTag()` and repeated cyclic `RUN*()` calls first check the
+   caller's task-local latched state; a call that changes nothing returns without touching the
+   coordinator. Only a first-time registration or an observed conflict enters the lock.
+2. **Plan construction and validation.** Sealing is three steps: (a) briefly freeze registration
+   under the lock and transition to `Sealing`; (b) construct and validate all plans incrementally
+   from the frozen registration records, outside the lock, bounded per scan — no other task may
+   mutate the frozen records, so no protection is needed; (c) briefly publish the finished plan
+   generation and final slot assignments under the lock (`SealedValid`/`SealedInvalid`). Scanning
+   up to 1,000 suites never happens inside a cross-task critical section.
+
 No coordinator lock is entered from `TEST`, assertions, wait helpers, suite bodies, or the normal
-per-cycle runner loop after configuration is sealed.
+per-cycle runner loop after the execution gate opens. Pre-gate polling (waiting for seal,
+acknowledgement, or gate-open) may take the lock once per scan because no test body is executing
+yet; the post-gate execution path takes it exactly once more — to publish quiescence.
 
 If a non-blocking `TestAndSet()` implementation is used, a failed acquisition defers registration
 or completion publication until the next scan. If `FB_IecCriticalSection` is used, the protected
@@ -338,18 +460,30 @@ logging, and no file/ADS access.
 
 `MaxNumberOfTestTasks` is a capacity, not a raw PLC task index limit.
 
+Slot assignment is deterministic and independent of registration order. Which task happens to
+register first depends on scheduling and must not change the report coordinator, manifest
+ordering, or the status array between boots.
+
 On first runner registration:
 
 1. Call `GETCURTASKINDEXEX()` into a `DINT`.
 2. Reject `<= 0` before any unsigned conversion.
-3. Reuse an existing slot for the same raw index, or assign the next free slot.
-4. Fail configuration if no slot remains.
+3. Record the registration keyed by raw task index. Any first-come registration index used while
+   collecting is internal and transient — it is never exposed and never becomes the slot.
+4. Fail configuration if more unique raw indices register than `MaxNumberOfTestTasks`.
+
+At seal:
+
+1. Sort the registered positive raw task indices ascending.
+2. Assign final compact slots `1..N` in that sorted order.
+3. Elect the task with the lowest raw index (slot 1) as the report coordinator.
 
 Examples:
 
 ```text
 Raw PLC tasks: Main=1, Log=2, Motion=3, TestFast=5, TestHeavy=8
-TcUnit mapping: TestFast raw 5 → slot 1; TestHeavy raw 8 → slot 2
+TcUnit mapping (regardless of which registered first):
+  TestFast raw 5 → slot 1 (report coordinator); TestHeavy raw 8 → slot 2
 ```
 
 `F_ResolveTaskSlot` performs a bounded lookup over the configured mappings and returns both
@@ -380,16 +514,19 @@ Each context contains only task-owned mutable state:
 - per-task ADS FIFO;
 - latched raw task index, normalized tag, run mode, and core index;
 - immutable selected suite registry indices and selected count;
-- per-task summary/status and one-shot diagnostic flags.
+- per-task execution summary/status (`ST_TcUnitTaskExecutionStatus`) and one-shot diagnostic flags,
+  including the quiescence latch.
 
-The full `ST_TestSuiteResults` snapshot and xUnit publisher buffer are deliberately not duplicated
-inside every task context.
+Publication state (`ST_TcUnitTaskPublicationStatus`) is owned by the report coordinator, not the
+task context. The full `ST_TestSuiteResults` snapshot and xUnit publisher buffer are deliberately
+not duplicated inside every task context.
 
-### E. Immutable execution plans
+### E. Immutable execution plans and the publication barrier
 
-When the expected runner count has registered, the coordinator validates and seals the complete
-topology under synchronization. It then builds each plan by scanning the global suite registry in
-registration order and appending suites that belong to that raw task and match that runner tag.
+When the expected runner count has registered, the sealing task freezes registration (under the
+lock), builds each plan outside the lock by scanning the global suite registry in registration
+order and appending suites that belong to that raw task and match that runner tag, verifies the
+invariants below, and publishes the finished plan generation (under the lock).
 
 After `SealedValid`:
 
@@ -399,33 +536,73 @@ After `SealedValid`:
 - no runner calls a suite owned by another task;
 - plan order is deterministic and preserves global registration order.
 
-The coordinator verifies these invariants before changing phase to `Executing`.
+Declaring the plans "immutable" does not by itself guarantee that another CPU core observes every
+plan write. Cross-core visibility is guaranteed by two explicit synchronized handoffs; all
+cross-task ordering claims in this document reduce to them:
 
-### F. Configuration timeout
+1. **Plan barrier (config → execution).** Plan writes complete before the plan generation is
+   published under the coordinator lock. Each runner observes the published generation through the
+   same primitive, resolves its own plan reference, and acknowledges (one-shot, under the lock).
+   The execution gate cannot open until every expected runner has acknowledged, so every runner's
+   plan reads happen strictly after the sealing task's plan writes, ordered by the lock.
+2. **Quiescence barrier (execution → reporting).** A task publishes its quiescence record (under
+   the lock) only after its final suite-state write. The report coordinator observes all
+   quiescence records through the same primitive before reading any suite instance, so its reads
+   of suite/test state happen strictly after every owning task's writes.
+
+Between the two barriers, no synchronization is needed inside tests, assertions, or suite bodies:
+each task writes only state it exclusively owns.
+
+### F. Timeouts and the stopped-task model
 
 Add parameters:
 
 ```iecst
 MaxNumberOfTestTasks      : UINT := 1;
 ExpectedNumberOfTestTasks : UINT := 1;
-TaskRegistrationTimeout   : TIME := T#5S;
-TaskExecutionTimeout      : TIME := T#0S;
+TaskRegistrationTimeout   : TIME := T#5S;   // also bounds plan acknowledgement
+TaskExecutionTimeout      : TIME := T#0S;   // per-task self-limit; 0 = unlimited
+GlobalExecutionTimeout    : TIME := T#0S;   // reporter-clock deadline; 0 = unlimited
 ReportingTimeout          : TIME := T#30S;
+FailOnZeroTests           : BOOL := FALSE;  // legacy mode only; tagged modes always fail
 ```
 
 Validate at compile/startup that
 `1 <= ExpectedNumberOfTestTasks <= MaxNumberOfTestTasks`.
 
-Each registered runner starts a task-local configuration wait timer. If the expected number of
-unique test tasks does not register before the timeout, the first runner able to enter the
-coordinator publishes `MissingExpectedTask` and seals the run invalid. This converts a stopped,
+**Registration and acknowledgement.** Each registered runner starts a task-local configuration
+wait timer. If the expected number of unique test tasks does not register before the timeout, the
+first runner able to enter the coordinator publishes `TaskRegistrationTimeout` and seals the run
+invalid. After seal, plan acknowledgement must complete within the same window measured by the
+report coordinator; expiry publishes `PlanAcknowledgementTimeout`. Both convert a stopped,
 missing, or misconfigured task into a failed result rather than an infinite wait.
 
-`TaskExecutionTimeout = T#0S` preserves the current unlimited behavior. A nonzero value places a
-wall-clock ceiling on each task plan and is strongly recommended for CI. Expiration marks an
-infrastructure failure, stops further suite execution on that task, and allows other tasks to
-finish for diagnostics. `ReportingTimeout` prevents file/report state machines from hanging
-automation indefinitely.
+**Two distinct timeout mechanisms cover execution.** A task that is genuinely stopped cannot
+evaluate its own timer, so a self-check alone cannot detect it:
+
+- `TaskExecutionTimeout` is a task-local self-limit evaluated on the task's own clock. Expiry
+  stops that task's further suite execution, marks `TaskExecutionTimeout` on the task, and the
+  task **still publishes quiescence**. Its status reads `QuiescedAfterTimeout = TRUE`
+  (*TimedOutAndQuiesced*). Its completed suite state is safe for the reporter to read.
+- `GlobalExecutionTimeout` is evaluated by the report coordinator on its own clock, from gate-open
+  until all quiescence records are observed. Expiry marks every task that has not quiesced as
+  **Unresponsive** (`TaskUnresponsive`) and moves the run to reporting.
+
+**The reporter never traverses suite state belonging to an unquiesced task.** Without the
+quiescence barrier there is no ordering guarantee on that state. For an unresponsive task the
+reporter publishes only a synthetic infrastructure result (shard outcome `WithheldUnresponsive`)
+— never a partial user-test shard. `ReportingTimeout` separately prevents the file/report state
+machine from hanging automation indefinitely.
+
+**Cases no PLC-side timer can cover.** If the report coordinator's own task stops, or no runner
+ever starts, no PLC code is running to publish failure. The .NET verifier and CI automation must
+run an external watchdog: absence of the expected fresh `RunId`/manifest within the harness
+deadline is a failed run. This is part of the completion contract, not an optional nicety.
+
+**Recovery.** After a run has been failed with an unresponsive task, restarting that task must not
+let it resume executing its stale plan into a completed run. The coordinator's phase gates this: a
+late task observing `Reporting`/`Complete` (or a generation mismatch) parks in a failed state. A
+PLC reset is required before another run.
 
 ### G. Runner state machine
 
@@ -433,10 +610,11 @@ Each task runner uses an explicit persistent state machine:
 
 ```text
 Unregistered
-  → WaitingForConfiguration
-  → Ready
+  → WaitingForConfiguration     (registration collected; awaiting seal)
+  → AcknowledgingPlan           (observed plan generation; acknowledge one-shot)
+  → WaitingForGate              (acknowledged; awaiting execution-gate open)
   → Executing
-  → ExecutionComplete
+  → Quiescing                   (final suite-state write done; publish quiescence one-shot)
   → WaitingForGlobalReport
   → Complete
 
@@ -454,12 +632,24 @@ maintains a persistent plan cursor and delay timer. It advances over selected su
 applies `TimeBetweenTestSuitesExecution` only between selected suites.
 
 Completion counts only plan entries. Nonmatching and unowned suites are never consulted during
-execution. The runner marks task execution complete exactly once through the coordinator.
+execution. The runner publishes quiescence exactly once through the coordinator — after its final
+suite-state write, whether execution finished normally or stopped on `TaskExecutionTimeout` or a
+task-scoped infrastructure failure.
 
-Task execution timeout uses timestamps from that task's own counter. Aggregate execution duration
-is measured entirely by the report-coordinator task—from valid configuration seal until it observes
-the final one-shot task completion—so timestamps from different CPU cores are never subtracted from
-one another.
+**Execution gate ownership and aggregate timing.** The sealing task is whichever runner's cyclic
+call observes registration completion; it cannot start a clock on the reporter's behalf. The
+report coordinator therefore owns the aggregate measurement end to end. In order, it:
+
+1. completes output preflight (RunId, stale-output invalidation);
+2. starts its aggregate CPU counter;
+3. opens the synchronized execution gate;
+4. stops the counter after observing the final quiescence record.
+
+Per-task execution timeout uses timestamps from that task's own counter; the aggregate duration is
+measured entirely on the reporter's clock, so timestamps from different CPU cores are never
+subtracted from one another. Documented consequence: the aggregate duration includes up to one
+reporter task cycle of completion-observation latency (plus gate-to-first-execution latency on
+other tasks), and is therefore an upper bound on the true concurrent execution span.
 
 ### H. Test call context
 
@@ -496,7 +686,8 @@ The current result type reserves up to 1,000 suites × 100 tests. Every test res
 at default capacities and is rejected by this design.
 
 The authoritative detailed state already exists inside each owned `FB_TestSuite` and its `FB_Test`
-instances. After task execution completes, that state is immutable. The revised reporting path
+instances. Once the owning task has published quiescence, that state is immutable and visible to
+the reporter (quiescence barrier, §E). The revised reporting path
 therefore reads suites directly through internal read-only getters and maintains only a small
 per-task summary during execution.
 
@@ -537,8 +728,9 @@ Duration semantics:
 
 - suite duration: unchanged, from first suite execution to suite completion;
 - task duration: first execution after seal through final suite completion;
-- aggregate duration: wall-clock span from global execution start through the last task's suite
-  completion, not the sum of task durations;
+- aggregate duration: wall-clock span on the reporter's clock from execution-gate open through
+  observation of the final quiescence record — not the sum of task durations (see §G for the
+  documented observation latency);
 - reporting duration: recorded separately and excluded from test execution time.
 
 ---
@@ -547,9 +739,11 @@ Duration semantics:
 
 ### Single report coordinator
 
-Per-task files do not require concurrent file writers. Once every task has marked execution
-complete, all suite/test state is immutable. The designated report coordinator then publishes all
-task shards sequentially.
+Per-task files do not require concurrent file writers. Suite/test state owned by a task is
+guaranteed visible and immutable to the reporter only once that task's quiescence record has been
+observed through the coordinator (the quiescence barrier in §E). The report coordinator publishes
+task shards sequentially, reads suite state only from quiesced tasks, and represents an
+unresponsive task solely by a synthetic infrastructure result — never a partial user-test shard.
 
 Benefits:
 
@@ -591,37 +785,81 @@ Path rules:
   supported SysFile API provides that operation;
 - if atomic replace is unavailable, record and test the exact fallback contract.
 
-### xUnit correctness
+### XML dialect and formatting contract
 
-Each shard root reports:
+The shard format is **JUnit-style XML** (the Jenkins/Maven-Surefire-consumed dialect TcUnit
+already approximates) — not a universal "xUnit" schema. The exact contract:
 
-- `tests` = total tests;
-- `failures` = failed tests plus a synthetic infrastructure testcase when applicable;
-- `skipped` = skipped tests;
-- `time` = task execution duration.
+- Root element `<testsuites>` with attributes `tests`, `failures`, `skipped`, `time`, and the run
+  identifier. Each `<testsuite>` carries `name`, `id`, `tests`, `failures`, `skipped`, `time`.
+- `tests` = total tests; `failures` = failed tests plus the synthetic infrastructure testcase when
+  applicable; `skipped` = skipped tests; `time` = task execution duration in seconds.
+- Skipped tests are represented by a `<skipped/>` child element on the `<testcase>`, not only a
+  status attribute.
+- Multiple-failure policy: the deterministic **first** assertion failure is emitted as the
+  `<failure>` detail; the total assertion-failure count for that test is emitted as a
+  deterministic count marker (message suffix or property) so additional failures are visible, not
+  silently dropped.
+- Decimal formatting is locale-independent: `.` decimal separator, fixed non-scientific notation,
+  explicit formatting code (never locale-dependent conversion).
+- Files are UTF-8 without BOM.
+- Characters invalid in XML 1.0 (control characters other than tab/LF/CR) are substituted with a
+  documented printable replacement before escaping; they are never emitted raw or "escaped" as
+  invalid character references.
+- Suite identities retain `global registry index - 1`, even when shard entries are compact,
+  keeping identities unique and stable across shards.
+- Shard provenance is emitted as deterministic suite properties/metadata: TcUnit library version,
+  `RunId`, normalized tag, task slot, raw task index, CPU core index, run mode.
+- Compatibility is proven against the actual downstream consumers (the ToolPackageManager merge
+  path and the CI parser in use), not only by schema inspection.
 
-Suite identities retain `global registry index - 1`, even when shard entries are compact. This
-keeps identities unique and stable across shards.
+### Streaming publication
 
-Include shard provenance as supported xUnit properties or deterministic suite metadata:
+For tagged and multi-task reporting, incremental generation is **mandatory**, not preferred. A
+whole-document buffer cannot represent worst-case configured capacity (100,000 testcases with
+maximum-length names and messages), so "prove the buffer is sufficient" is only viable for much
+smaller capacities and is not the supported design.
 
-- TcUnit library version;
-- run identifier;
-- normalized tag;
-- task slot;
-- raw task index;
-- CPU core index;
-- run mode.
+- XML is generated incrementally and written in bounded chunks across scans.
+- The per-scan work budget (bytes and/or testcases per scan) is a configurable parameter and is
+  reported in diagnostics.
+- Every write checks both the error return code **and** the written-byte count; a short write is a
+  publication failure (`FileWriteFailed`), not a retry loop.
+- Retry policy is explicit: **no automatic retries**. Any file error fails that publication
+  deterministically; the failure is machine-readable and the run is failed.
+- If the selected SysFile APIs can block the calling task, reporting must run on a dedicated
+  low-priority reporting task; otherwise the compile spike must record their proven worst-case
+  behavior on the supported build. This decision is frozen before implementation.
+- `xUnitEnablePublish = FALSE`: no preflight file operations, no shards, no manifest;
+  `OutputEnabled = FALSE` and shard outcomes read `Disabled` in status. Machine-readable PLC
+  status is then the sole completion authority, and file absence must not be interpreted as
+  failure by tooling configured for status-based completion.
 
-XML control/buffer overflow is a reporting failure. It must never silently truncate output. The
-preferred implementation streams bounded chunks across scans. If the first implementation retains
-a whole-document buffer, XAE tests must prove the configured buffer is sufficient or emit a failed
-infrastructure result and withhold the final shard.
+Legacy single-task whole-buffer publication may remain internally for strict compatibility, but
+tagged/multi-task shards always use the streaming path. XML buffer overflow anywhere is a
+reporting failure and never silently truncates output.
 
-### Manifest and completion contract
+### Run epoch, manifest, and completion contract
 
-In multi-task/tagged mode, the authoritative completion artifact is a manifest written after every
-expected shard has closed successfully. Suggested path:
+Writing the manifest last prevents partial publication, but an old successful manifest can remain
+on disk while a new run is configuring or failing. Stale-success rejection is therefore enforced
+with a run epoch, not file presence:
+
+1. **Fresh `RunId`.** Generated once per activation/run and published in PLC status before the
+   execution gate opens. It is opaque, unique per activation, and embedded in status, every shard,
+   and the manifest — always the same value for one run.
+2. **Output preflight** (report coordinator, before the gate opens, when publication is enabled):
+   delete the previous manifest by its exact path, and delete this run's exact `.tmp` targets.
+   File-not-found is success; any other deletion failure is `OutputPreflightFailed` and fails the
+   run before any test executes. There is **no broad wildcard cleanup** — only exactly named
+   paths are ever deleted.
+3. **Automation handshake.** Automation first observes the new `RunId` in PLC status, then accepts
+   only a manifest that (a) carries that same `RunId`, (b) has `publicationComplete = true`, and
+   (c) states an explicit `outcome`. File presence alone is never success. Timeout or absence is
+   failure (subject to the `OutputEnabled` status flag for status-based completion).
+
+In multi-task/tagged mode the authoritative completion artifact is the manifest, written after
+every expected shard outcome is known. Suggested path:
 
 ```text
 tcunit_xunit_testresults.manifest.json
@@ -629,25 +867,35 @@ tcunit_xunit_testresults.manifest.json
 
 The manifest contains:
 
-- schema version and TcUnit library version;
-- run identifier;
-- aggregate success/failure and infrastructure status;
-- expected, registered, executed, and published task counts;
-- aggregate counts/durations;
-- one entry per task: slot, raw index, core, tag, mode, shard path, counts, duration, publish status;
-- stable infrastructure error code/message if present.
+- `schemaVersion` and TcUnit library version;
+- `runId` (identical to PLC status and all shards);
+- `publicationComplete : bool` — true only when every listed shard outcome is final;
+- `outcome : "passed" | "test_failed" | "infrastructure_failed"` — explicit; never inferred from
+  file presence;
+- expected, registered, quiesced, and published task counts;
+- discovered, selected, and excluded suite counts, plus a per-suite excluded list with reason
+  codes;
+- aggregate counts/durations (seconds);
+- one entry per task: slot, raw index, core, tag, mode, shard path, shard outcome, counts,
+  duration;
+- primary infrastructure error code/message and error count if present.
 
-Write the manifest through a temporary file and replace it only after all shard outcomes are known.
-Downstream tooling merges only the shard paths listed in the current manifest. A broad
-`tcunit_xunit_testresults*.xml` glob is not authoritative because it can include stale shards.
+All JSON string values are escaped per RFC 8259. A JSON Schema for the manifest is committed to
+the repository (`docs/schemas/tcunit-manifest.schema.json`) and validated in the verifier.
+
+Write the manifest through a temporary file and replace it only after all shard outcomes are
+known. Downstream tooling merges only the shard paths listed in the manifest whose `runId` matches
+PLC status. A broad `tcunit_xunit_testresults*.xml` glob is not authoritative because it can
+include stale shards.
 
 If configuration fails before normal execution, publish a configuration-failure shard containing a
 synthetic failed testcase such as `TcUnit.Infrastructure.Configuration`, then publish a manifest
-that lists it. If output cannot be written at all, PLC status remains failed and the manifest is
-absent; external tooling must treat timeout/absence as failure.
+with `outcome = "infrastructure_failed"` that lists it. If output cannot be written at all, PLC
+status remains failed and the manifest is absent; external tooling must treat timeout/absence as
+failure.
 
-Legacy single-task plain `RUN()` retains the existing file path and may omit the manifest for strict
-compatibility. Machine-readable PLC status is still available.
+Legacy single-task plain `RUN()` retains the existing file path and may omit the manifest for
+strict compatibility. Machine-readable PLC status (including `RunId`) is still available.
 
 ### ADS and structured traces
 
@@ -673,15 +921,18 @@ an infrastructure failure. The required/optional policy must be explicit rather 
 
 ## Failure model
 
-Define a strict enum such as `E_TcUnitConfigurationError` / `E_TcUnitInfrastructureError` with at
-least:
+Define one strict enum `E_TcUnitErrorCode` with explicit stable numeric values (grouped in
+numbered ranges: configuration, execution, capacity, reporting) containing at least:
 
 - `None`
 - `InvalidTaskContext`
 - `TaskCapacityExceeded`
 - `InvalidExpectedTaskCount`
 - `TaskRegistrationTimeout`
+- `PlanAcknowledgementTimeout`
 - `TaskExecutionTimeout`
+- `GlobalExecutionTimeout`
+- `TaskUnresponsive`
 - `ReportingTimeout`
 - `RunnerRegistrationChanged`
 - `MixedLegacyAndMultiTaskMode`
@@ -692,12 +943,14 @@ least:
 - `SuiteWithoutRunner`
 - `SuiteTagDoesNotMatchOwnerRunner`
 - `RunnerHasNoSuites`
+- `ZeroTestsExecuted`
 - `SuiteCapacityExceeded`
 - `TestCapacityExceeded`
 - `AssertionCapacityExceeded`
 - `AdsQueueOverflow`
 - `StructuredTraceUnavailable`
 - `XmlBufferOverflow`
+- `OutputPreflightFailed`
 - `FileDeleteFailed`
 - `FileOpenFailed`
 - `FileWriteFailed`
@@ -711,13 +964,13 @@ Rules:
 - Configuration errors prevent all suite execution.
 - A test-task infrastructure failure after execution starts stops that task's further suite
   execution where continuing would corrupt attribution, but other tasks may finish to maximize
-  diagnostics.
+  diagnostics. The failed task still publishes quiescence.
 - Any infrastructure failure makes aggregate status failed.
 - Infrastructure failures are not counted as user test assertion failures; xUnit represents them
   with a synthetic framework testcase.
 - Every error is one-shot in human logs but persistent in machine-readable status.
-- The first error code is retained as primary; subsequent errors may increment a count or populate a
-  bounded diagnostic list.
+- The first error is retained as `PrimaryErrorCode` together with `FirstErrorPhase`; subsequent
+  errors increment `ErrorCount` and may populate a bounded diagnostic list.
 
 `TEST_FINISHED_NAMED` misuse aborts/fails the current task runner, not unrelated task contexts. The
 aggregate run still fails and other tasks may complete for diagnostic value.
@@ -809,6 +1062,36 @@ across scans with a documented work budget so the end-of-run phase does not crea
 All behavior is covered by committed projects/tests. Consumer-only experiments are supplementary,
 not the permanent regression suite.
 
+### Test seams — injectable providers
+
+Fault injection must not require manually modifying production guards. The implementation exposes
+internal injectable providers, with production defaults bound to the real primitives:
+
+- task identity (`GETCURTASKINDEXEX` wrapper) — inject `-1`/`0`/arbitrary raw indices;
+- monotonic time (`GETCPUCOUNTER` wrapper) — inject stalls, jumps, and wraparound;
+- file operations (SysFile wrapper) — inject open/write/short-write/close/rename/delete failures;
+- synchronization primitive — inject acquisition failure and forced contention;
+- ADS queue capacity — inject overflow;
+- trace sink — inject unavailable/overflowed structured tracing.
+
+Every Level 5 fault case is driven through these seams. The seams are internal (not public API)
+and their production bindings are themselves covered by Level 1/2 tests.
+
+### Reference state-machine model
+
+The .NET verifier contains an executable reference model of the coordinator and runner state
+machines: registration, sealing, slot assignment, acknowledgement, gate, execution, quiescence,
+and reporting. Generated event traces (registration orders, timings, injected faults) are fed to
+both the model and the PLC implementation; phase transitions, final slots, error codes, and final
+status must agree. Formal transition coverage is required: every phase transition and every error
+code is exercised by at least one trace.
+
+### Metamorphic properties
+
+- Permuting task registration/start order must not change final slot assignment, plans, shard
+  names, or manifest content (after canonicalization).
+- Moving tasks between CPU cores must not change any semantic result — only measured durations.
+
 ### Level 0 — design and static analysis
 
 - Inventory every mutable global and function-static reference.
@@ -837,14 +1120,19 @@ Before broad edits, prove in XAE:
 - Add a committed `RUN_IN_SEQUENCE()` verifier configuration.
 - Verify no-argument namespaced and unqualified call styles used by consumers.
 - Verify raw test task index greater than 1 maps to TcUnit slot 1.
-- Golden ADS and xUnit outputs are compared with explicitly approved intentional differences.
+- Golden ADS and xUnit/manifest outputs are compared after canonicalization that excludes only the
+  intentionally nondeterministic fields (durations, fresh `RunId`, timestamps); every other byte
+  is compared. Intentional differences from current output are explicitly approved.
 
 ### Level 3 — single-task selective execution
 
-- Matching tagged suites execute; untagged/nonmatching suites remain untouched and unreported.
+- Matching tagged suites execute; untagged/nonmatching suites are never executed and are recorded
+  as excluded with reason codes (`Untagged`/`TagMismatch`) — not reported as skipped tests.
+- Every selection-truth-table row and empty-run condition has a dedicated test.
 - Tags normalize deterministically.
 - Invalid/empty/overlong/path-like tags fail closed.
-- Zero matches produces infrastructure failure, not green zero tests.
+- Zero matches produces infrastructure failure, not green zero tests; `ZeroTestsExecuted` fires
+  when selected suites execute no tests.
 - Repeated identical `SetTag`/`RUN` calls are idempotent.
 - Tag, mode, or owner mutation is rejected.
 - Registry identities remain stable in compact output.
@@ -876,19 +1164,36 @@ Assertions:
 
 ### Level 5 — negative/fault-injection verifier
 
-Deterministically inject and assert:
+Deterministically inject (through the test seams) and assert:
 
-- missing expected runner timeout;
+- missing expected runner: registration timeout;
+- registered runner that never acknowledges: plan acknowledgement timeout;
 - too many unique runner tasks;
-- invalid task context (`-1`/`0`) through a test hook;
-- mixed plain and tagged multi-task mode;
+- invalid task context (`-1`/`0`);
+- mixed plain and tagged mode, including one `SetTag()` suite plus a plain legacy runner;
 - same suite configured from two tasks;
 - unowned/orphan/mismatched suite;
 - duplicate/different runner registration on one task;
-- task execution timeout and report publication timeout;
+- zero tests executed in tagged and multi-task mode; legacy `FailOnZeroTests` both settings;
+- task execution self-timeout: task quiesces, `QuiescedAfterTimeout = TRUE`, its completed suites
+  are reported;
+- stopped task after gate-open: global execution deadline fires, task marked `TaskUnresponsive`,
+  reporter publishes only a synthetic infrastructure result and never traverses that task's suite
+  state; restarting the task does not resume execution; run requires reset;
+- reporter task stopped / no runner ever started: external verifier watchdog fails the run on
+  missing fresh `RunId`/manifest;
+- report publication timeout;
 - suite/test/assert/ADS/XML capacity overflow;
-- file open/write/close/rename failure;
-- stopped task before completion;
+- output preflight failure (undeletable stale manifest);
+- stale successful manifest from a previous run present at start: automation rejects it via the
+  `RunId` handshake;
+- `xUnitEnablePublish = FALSE`: no file operations, status-based completion works;
+- file open/write/short-write/close/rename failure;
+- crash-cut at every publication boundary: before temp open, mid-write, after close, after shard
+  rename, before manifest replace, after manifest replace — automation never accepts a stale or
+  partial result in any cut;
+- arithmetic boundaries: every capacity product at maximum, every counter at its width limit,
+  maximum-length derived filenames, and CPU-counter/`TIME` wraparound;
 - `TEST_FINISHED_NAMED` misuse;
 - TwinCATBase trace sink unavailable or overflowed.
 
@@ -902,9 +1207,14 @@ Every case must prove:
 
 ### Level 6 — concurrency and repetition stress
 
-- Synchronize task starts to maximize contention during registration and completion publication.
-- Repeat cold-start multi-task runs enough times to expose scheduling-sensitive failures; record the
-  chosen count and hardware.
+Stress supplements the synchronization-correctness arguments (the two barriers plus the reference
+model); it does not prove them.
+
+- Synchronize task starts to maximize contention during registration, acknowledgement, and
+  quiescence publication.
+- Repeat cold-start multi-task runs a minimum of 500 times (raise if any failure reproduces at
+  lower counts); record the exact count, hardware, TwinCAT build, and library version with the
+  results.
 - Vary task priorities, periods, and core placement.
 - Stress simultaneous assertion failures and per-task ADS queues.
 - Stress TwinCATBase with all test writers plus LogTask reader.
@@ -923,6 +1233,32 @@ merge behavior from the manifest.
 After tests pass, intentionally disable or alter one guard at a time to prove the relevant test
 fails. Mutation checks supplement red-first tests; they do not replace deterministic assertions.
 
+### Requirements traceability
+
+Every requirement below must be traceable to at least one committed test; the table is kept
+current as tests are written (test names filled in during implementation).
+
+| ID | Requirement | Verified by |
+|---|---|---|
+| R1 | Correct attribution — assertions/finishes/durations bind to the exact suite/test | L4 isolation asserts; L6 stress; mutation |
+| R2 | Exactly-once suite execution; each suite in ≤1 plan | L4 invocation counters; L5 owner-conflict cases |
+| R3 | Fail closed — no invalid topology/capacity/reporting error yields a green run | L3 invalid-tag/zero-match; L5 full fault matrix |
+| R4 | Deterministic slots/plans/output independent of registration order | Metamorphic permutation tests; canonicalized goldens |
+| R5 | No lock in the test execution path between the two barriers | L0 static analysis + code review; L6 cycle-time evidence |
+| R6 | Plan barrier — runners read plans only after synchronized acknowledgement | Reference model traces; L5 acknowledgement-timeout case |
+| R7 | Quiescence barrier — reporter reads only quiesced tasks' suite state | Reference model traces; L5 unresponsive-task case |
+| R8 | Stopped-task detection — self-timeout, global deadline, external watchdog | L5 timeout/unresponsive/watchdog cases |
+| R9 | Run-epoch handshake — stale success never accepted | L5 stale-manifest and crash-cut cases |
+| R10 | Streaming publication with bounded per-scan work and short-write detection | L1 spike; L5 file faults; L6 cycle-time metrics |
+| R11 | Count semantics `total = passed + failed + skipped`; UDINT widths | L2/L4 goldens; arithmetic boundary tests |
+| R12 | Legacy `RUN()`/`RUN_IN_SEQUENCE()` behavior preserved | L2 regression; consumer qualification (L7) |
+| R13 | Selection truth table and empty-run semantics enforced per mode | L3/L5 per-row tests; manifest exclusion assertions |
+| R14 | Status ABI versioned, numbered, torn-read-safe | L1 spike; .NET seqlock reader tests; L6 stress |
+| R15 | Memory — no per-task replication of the full result snapshot | L1 measured sizes; acceptance gate |
+| R16 | XML dialect/formatting contract (skipped element, decimals, UTF-8, control chars) | Golden shards; downstream CI parser compatibility tests |
+| R17 | Manifest schema validity and JSON escaping | Committed JSON Schema validation in verifier |
+| R18 | Online-change/reset lifecycle safety | L1 `FB_reinit` spike; L5 generation-change case |
+
 ---
 
 ## Implementation order
@@ -938,19 +1274,23 @@ fails. Mutation checks supplement red-first tests; they do not replace determini
    - Prove compact task lookup, synchronization primitive, context-array initialization, rename,
      online change, and exact memory.
 
-2. **Status and coordinator skeleton**
-   - Add enums/status DUTs, parameters, coordinator state machine, raw-to-slot registration, and
+2. **Status, seams, and coordinator skeleton**
+   - Add numbered enums, status DUTs and the versioned status GVL with its seqlock/double-buffer
+     protocol, parameters, injectable provider seams, the coordinator state machine with the
+     `Sealing` phase, registration keyed by raw index, deterministic sorted slot assignment, and
      fail-closed diagnostics.
-   - Keep suite execution disabled until sealing invariants are proven.
+   - Keep suite execution disabled until sealing, acknowledgement, and gate invariants are proven
+     against the reference model.
 
 3. **Task-context migration**
    - Move runner/current-test/counter/queue state into cohesive contexts.
    - Migrate every mutable reference, including logging/result helpers and function-static state.
    - Keep default one-task legacy verifier green.
 
-4. **Suite assignment and immutable planning**
-   - Implement normalized `SetTag`, owner capture, runner registration, timeout, validation, plan
-     construction, and seal.
+4. **Suite assignment, immutable planning, and barriers**
+   - Implement normalized `SetTag`, owner capture, runner registration, timeouts, the selection
+     truth table, out-of-lock plan construction, seal, plan acknowledgement, and the execution
+     gate with reporter-owned preflight and aggregate timing.
    - Add single-task selective tests before enabling multi-task execution.
 
 5. **Plan-driven runners**
@@ -959,12 +1299,17 @@ fails. Mutation checks supplement red-first tests; they do not replace determini
 
 6. **Memory-safe result/reporting pipeline**
    - Remove per-task full snapshots.
-   - Add direct immutable suite readers, correct summaries, single report coordinator, shard
-     publishing, synthetic infrastructure failures, and manifest.
+   - Add quiescence-gated immutable suite readers, correct summaries, the single report
+     coordinator, `RunId` generation and output preflight, streaming shard publication with a
+     per-scan work budget, synthetic infrastructure failures, and the manifest with its committed
+     JSON Schema.
 
 7. **Committed multi-task verifier and stress suite**
-   - Add two-task task objects/PRGs, .NET status polling, fault injection, golden XML/manifest, static
-     analysis, core checks, repetition stress, and memory/performance evidence.
+   - Add two-task task objects/PRGs, .NET status polling with the seqlock reader and external
+     watchdog, the reference state-machine model, seam-driven fault injection, crash-cut and
+     metamorphic tests, canonicalized golden XML/manifest comparisons plus downstream CI parser
+     compatibility, static analysis, core checks, recorded-count repetition stress, arithmetic
+     boundary tests, and memory/performance evidence. Fill in the traceability table.
 
 8. **Consumer qualification and release**
    - Audit/compile all Photara consumers.
@@ -1013,6 +1358,13 @@ Every new TwinCAT object and method/property/function receives a fresh randomize
 | Consumer suites race on a shared SUT/resource | Explicit ownership/migration contract and consumer concurrency audit. |
 | Existing internal API consumers break | Cross-repository symbol audit and compatibility adapter/migration notes. |
 | Sequential runner filtering regresses | Shared plan abstraction plus committed sequential verifier. |
+| Another core misses plan/suite writes | Plan and quiescence barriers: all cross-task handoffs ordered by the coordinator primitive. |
+| Sealing scans 1,000 suites under a cross-task lock | `Sealing` phase: freeze briefly, build/validate plans outside the lock, publish briefly. |
+| Slot/reporter identity varies between boots | Deterministic sorted-raw-index slot assignment at seal; metamorphic tests. |
+| Stopped task hangs or corrupts the run | Reporter-clock global deadline; `TaskUnresponsive`; reporter never reads unquiesced state; external watchdog; reset before rerun. |
+| Old successful manifest read as current | Run epoch: fresh `RunId` handshake, preflight invalidation, `publicationComplete`/`outcome` fields. |
+| ADS reads a torn status snapshot | Versioned status GVL with seqlock/double-buffer publication protocol. |
+| Whole-document XML buffer cannot hold worst case | Mandatory streaming publication with bounded per-scan budget and short-write detection. |
 
 ---
 
@@ -1029,10 +1381,22 @@ Implementation is complete only when all are true:
 - [ ] Legacy `RUN` and `RUN_IN_SEQUENCE` verifier configurations pass.
 - [ ] Single-task selective tests pass, including zero-match and invalid-tag failures.
 - [ ] Multi-task exact-once/isolation tests pass on same-core and distinct-core configurations.
-- [ ] Every negative configuration/fault case fails closed and is machine-readable.
-- [ ] Shards have correct counts, unique deterministic paths, and stable suite identities.
-- [ ] Manifest is written last and is the only authoritative shard list.
+- [ ] Plan and quiescence barriers are implemented as specified and the PLC implementation agrees
+      with the reference state-machine model on all generated traces, with full phase/error
+      transition coverage.
+- [ ] Slot assignment and reporter election are proven order-independent (metamorphic tests).
+- [ ] Every selection-truth-table row and empty-run condition has a passing test.
+- [ ] Every negative configuration/fault case fails closed and is machine-readable, driven through
+      the injectable seams.
+- [ ] The status GVL's torn-read protection is verified by the .NET seqlock reader under load.
+- [ ] Shards have correct counts, unique deterministic paths, and stable suite identities, and
+      pass the downstream CI parser compatibility tests.
+- [ ] Streaming publication respects its per-scan work budget and detects short writes.
+- [ ] Manifest is written last, matches the committed JSON Schema, and is the only authoritative
+      shard list.
+- [ ] The `RunId` handshake rejects stale output in every crash-cut scenario.
 - [ ] No partial or stale output can be mistaken for the current successful run.
+- [ ] The requirements traceability table is complete, with every row naming committed tests.
 - [ ] Memory, task execution, exceed counters, reporting work, and core mapping are recorded.
 - [ ] All Photara consumers compile; representative projects run successfully.
 - [ ] Documentation, migration notes, version, and compiled library are updated together.
