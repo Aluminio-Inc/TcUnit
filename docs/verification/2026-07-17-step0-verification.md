@@ -1,6 +1,88 @@
-# Step-0 Verification (Phase 4a/4b + sequential runner + xUnit counts)
+# Step-0 Verification Procedure (Phase 4a/4b + sequential runner + xUnit counts)
 
-Procedure body is added by plan Task 5. This file starts with the Task 0 preflight baseline.
+Campaigns live in TwinCAT_Tests (branch `feat/tcunit-step0`). xUnit output:
+`%TC_BOOTPRJPATH%tcunit_step0_xunit.xml` — this resolves ON THE PLC
+(`C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml` at 192.168.225.2); retrieve it over
+the share (e.g. `\\192.168.225.2\Logs` sibling admin path or copy via RDP) before
+running the script.
+Run RED against the TcUnit **2026.7.17.1** baseline, GREEN against the Step-0 candidate.
+Every xUnit claim is asserted by `Verify-StepZeroXUnit.ps1`, never by eyeball.
+
+## Per-campaign run recipe
+
+1. Open `TwinCAT_Tests.sln` in XAE. **Isolate the campaign**: exclude from build
+   every `PRG_TEST_*` program AND every other step-0 campaign PRG except this
+   campaign's PRG (multi-select in Solution Explorer -> Properties -> Exclude
+   from build). Assign the campaign PRG to TestTask1 (TestTask2/3 stay empty).
+2. Build (Ctrl+Shift+B) - must compile clean.
+3. Delete the previous xUnit file on the PLC if present. Record that it is absent.
+4. Activate configuration, restart in Run mode, log in.
+5. **Isolation preflight**: online-read `TcUnit.GVL_TcUnit.NumberOfInitializedTestSuites`.
+   It must equal this campaign's suite count exactly (REGRESSION 2, COUNTS 2,
+   EDGE 3, ABORT 1). Mismatch = STOP: record the observed value (on the first
+   run this also settles empirically whether unassigned-PRG suites register),
+   fix the exclusions, and rerun. Do not trust any result from a run whose
+   preflight mismatched.
+6. Wait for the ADS summary block (`| ==========TESTS FINISHED RUNNING==========`).
+7. Watch `TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished` online for 60 s
+   after the summary appears; record its value.
+8. Retrieve the xUnit file from the PLC; verify it was freshly created (creation
+   time after step 4; record `Get-FileHash`), then run:
+   `pwsh -File C:\Users\scott\Documents\TcUnitFork\docs\verification\Verify-StepZeroXUnit.ps1 -Path <retrieved-file> -Campaign <X> -Phase <RED|GREEN> [-OutCanonical <path>]`
+9. Record script output (PASS/FAIL lines) and the observations table. After the
+   last run of a phase, restore all build exclusions and the original TestTask
+   assignment, and confirm with `git status` that only intended changes remain.
+
+## Phase matrix
+
+| Phase | Campaigns | Extra checks |
+|---|---|---|
+| RED (baseline 2026.7.17.1) | REGRESSION, COUNTS | rows R1-R6 below |
+| GREEN (Step-0 candidate) | REGRESSION, COUNTS, EDGE, ABORT | rows G1-G8, abort A1, single-suite S1 |
+
+## Non-XML observations
+
+| # | Observation | Expected | Actual |
+|---|---|---|---|
+| P1 | Isolation preflight, EVERY run: NumberOfInitializedTestSuites | exactly 2/2/3/1 per campaign; first run records what unassigned-PRG registration empirically does | _pending_ |
+| R1 | REGRESSION RED: script exit code | 0 (all RED-model assertions hold) | _pending_ |
+| R2 | REGRESSION RED: AllTestSuitesFinished after summary | stays FALSE for 60 s (breadcrumb #19) | _pending_ |
+| R3 | REGRESSION RED: 'TEST RUN COMPLETED' trace | absent | _pending_ |
+| R4 | REGRESSION RED: out-of-context Error traces | repeated burst from ordered probe (unguarded in baseline) | _pending_ |
+| R5 | COUNTS RED: script exit code | 0 | _pending_ |
+| R6 | COUNTS RED: ADS 'Successful tests:' line | 3 (skipped counted as successful: 4 total - 1 fail) | _pending_ |
+| G1 | REGRESSION GREEN: script exit code | 0 (zero failures anywhere) | _pending_ |
+| G2 | REGRESSION GREEN: AllTestSuitesFinished | TRUE within 60 s | _pending_ |
+| G3 | REGRESSION GREEN: 'TEST RUN COMPLETED' trace | present exactly once | _pending_ |
+| G4 | REGRESSION GREEN: out-of-context Error trace | exactly once per suite instance (one-shot) | _pending_ |
+| G5 | COUNTS GREEN: script exit code | 0 (sole failure identity = Test_IntentionalFail) | _pending_ |
+| G6 | COUNTS GREEN: ADS 'Successful tests:' line | 2 (4 total - 1 fail - 1 skip) | _pending_ |
+| G7 | EDGE GREEN: script exit code | 0; AllTestSuitesFinished TRUE | _pending_ |
+| G8 | xUnit file freshness | absent before each run; fresh creation time + new hash after | _pending_ |
+| A1 | ABORT campaign: run PRG_TEST_TCUNIT_STEP0_ABORT; first OBSERVE AllTestSuitesFinished = FALSE and the run in progress (Test_AbortWindow registered, 'TEST RUN STARTED' trace), then online-write TcUnit.GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := TRUE | precondition observations recorded; after the write, AllTestSuitesFinished latches TRUE promptly and 'TEST RUN ABORTED' trace appears; no ADS summary/xUnit export expected (results never complete); delete any xUnit file afterward | _pending_ |
+| S1 | Single-suite (TcUnit-Verifier): exclude PRG_TEST from build, assign PlcTask to PRG_TEST_SEQUENCE, run | AllTestSuitesFinished TRUE with NumberOfInitializedTestSuites = 1; restore PRG_TEST and task assignment afterward; verifier-repo git status clean | _pending_ |
+
+## Memory evidence (Task 10)
+
+| Measurement | Before (baseline 2026.7.17.1) | After (candidate) | Delta |
+|---|---|---|---|
+| SIZEOF(ST_TestSuiteResult) | _pending_ | _pending_ | expected +2 bytes (+padding) |
+| SIZEOF(ST_TestSuiteResults) | _pending_ | _pending_ | expected ~ +2 KB (1000 x 2 bytes + aggregate UDINT widening + padding) |
+| TwinCAT_Tests build: allocated data size | _pending_ | _pending_ | record from build output |
+
+## Golden
+
+After GREEN REGRESSION and COUNTS runs pass, re-run the script with
+`-OutCanonical` and commit the outputs as
+`docs/verification/goldens/2026-07-17-step0-<campaign>-canonical.xml`.
+These are the Level 2 baselines for the Phase 5 refactor: future campaign runs
+must reproduce them byte-identically after canonicalization, with intentional
+differences explicitly approved and the goldens re-committed.
+
+## Results log
+
+| Date | Library | Campaign/Phase | Script exit | Notes |
+|---|---|---|---|---|
 
 ---
 
