@@ -8,6 +8,20 @@ running the script.
 Run RED against the TcUnit **2026.7.17.1** baseline, GREEN against the Step-0 candidate.
 Every xUnit claim is asserted by `Verify-StepZeroXUnit.ps1`, never by eyeball.
 
+## Scripted execution (preferred)
+
+`Run-StepZeroCampaign.ps1 -Campaign <REGRESSION|COUNTS|EDGE|ABORT> -Phase <RED|GREEN>`
+automates the recipe below: campaign selection (TestTask1 PouCall swap + ExcludeFromBuild
+on all other test PRGs), stale-xUnit deletion on the PLC, `tpm test`
+(build/deploy/run/collect), xUnit fetch + freshness/hash, the Verify script, and an
+EventLog marker check. Equivalences: the online isolation preflight (step 5) is enforced
+post-hoc by the Verify script's exact-suite assertion (record P1 from the asserted suite
+count); the latch observation (R2/G2/R3/G3) is evidenced by the presence/absence of the
+'TEST RUN COMPLETED' trace, which only the completion latch emits. `-Restore` reverts the
+selection edits; `-SelectOnly` / `-ResultsOnly` split the phases. ABORT deploys then
+prints the manual abort steps (A1 stays hands-on by design). The ExcludeFromBuild
+mechanism is fail-safe: if it did not isolate, the exact-suite assertion fails the run.
+
 ## Per-campaign run recipe
 
 1. Open `TwinCAT_Tests.sln` in XAE. **Isolate the campaign**: exclude from build
