@@ -32,7 +32,7 @@ Documentation and examples are available at www.tcunit.org</Description>
     </SelectedLibraryCategories>
     <Company>www.tcunit.org</Company>
     <Author>Jakob Sagatowski and contributors</Author>
-    <ProjectVersion>2026.7.17.1</ProjectVersion>
+    <ProjectVersion>2026.7.17.2</ProjectVersion>
     <WriteProductVersion>false</WriteProductVersion>
     <GlobalVersionStructureIncluded>true</GlobalVersionStructureIncluded>
     <!--    <OutputType>Exe</OutputType>
