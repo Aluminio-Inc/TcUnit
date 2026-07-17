@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_SequentialSingleSuite" Id="{c9861766-2402-41df-8a74-0fbae6a71719}" SpecialFunc="None">
+    <Declaration><![CDATA[// One passing test; used by PRG_TEST_SEQUENCE for the N=1 sequential check.
+FUNCTION_BLOCK FB_SequentialSingleSuite EXTENDS TcUnit.FB_TestSuite]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TEST('Test_SingleSequentialPass');
+AssertTrue(Condition := TRUE, Message := 'Single-suite sequential run');
+TEST_FINISHED();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

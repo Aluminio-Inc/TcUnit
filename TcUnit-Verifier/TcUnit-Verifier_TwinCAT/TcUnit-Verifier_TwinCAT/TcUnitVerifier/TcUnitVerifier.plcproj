@@ -113,6 +113,12 @@
     <Compile Include="Test\PRG_TEST.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Test\FB_SequentialSingleSuite.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Test\PRG_TEST_SEQUENCE.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Version\Global_Version.TcGVL">
       <SubType>Code</SubType>
     </Compile>

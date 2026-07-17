@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="PRG_TEST_SEQUENCE" Id="{c0d130ea-090e-45d3-8367-daf286421687}" SpecialFunc="None">
+    <Declaration><![CDATA[(* Committed single-suite RUN_IN_SEQUENCE check (precursor of the fully
+   automated sequential verifier configuration; see the Phase 5 verifier plan).
+   Usage: exclude PRG_TEST from build, assign PlcTask to this PRG, run, and
+   verify TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished latches TRUE with
+   TcUnit.GVL_TcUnit.NumberOfInitializedTestSuites = 1 (same empirical suite-count
+   preflight as the step-0 campaigns).
+   With exactly one registered suite, the 2026.7.17.1 baseline never latches (the
+   final-suite branch never published the finished count); the Step-0 candidate
+   latches. *)
+PROGRAM PRG_TEST_SEQUENCE
+VAR
+    SingleSuite : FB_SequentialSingleSuite;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TcUnit.RUN_IN_SEQUENCE();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
