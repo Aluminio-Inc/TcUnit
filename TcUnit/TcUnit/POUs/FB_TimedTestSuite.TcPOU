@@ -5,6 +5,11 @@
 VAR
     TimedTestStates      : ARRAY[1..GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite] OF ST_TimedTestState;
     _nActiveTimedTestIdx : UINT;
+    (* Task cycle in which _nActiveTimedTestIdx was set; a wait helper only accepts
+       the context if it was set in the same cycle (guards cross-scan staleness) *)
+    _nActiveTimedTestCycle : UDINT;
+    // One-shot for the out-of-context wait Error trace (cyclic path - must not storm)
+    bOutOfContextWaitTraced : BOOL;
 END_VAR]]></Declaration>
     <Implementation>
       <ST><![CDATA[]]></ST>
@@ -29,6 +34,35 @@ FOR i := 1 TO nMax BY 1 DO
 END_FOR]]></ST>
       </Implementation>
     </Method>
+    <Method Name="_GetActiveWaitContext" Id="{86956363-27ee-49ee-b77e-8ee3252c6ab2}">
+      <Declaration><![CDATA[(* Returns the timed-test index for a wait-helper call, or 0 when the call is
+   out of context. Valid context requires all three: an index was set, it was
+   set in the current task cycle (TEST_TIMED* ran earlier in this scan and
+   selected this test for body execution), and the framework's current test
+   name still matches (defense against later TEST() calls in the same scan). *)
+METHOD PRIVATE _GetActiveWaitContext : UINT
+VAR
+    idx : UINT;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[_GetActiveWaitContext := 0;
+idx := _nActiveTimedTestIdx;
+IF idx = 0 THEN
+    RETURN;
+END_IF
+
+GetCurrentTaskIndex();
+IF _nActiveTimedTestCycle <> TwinCAT_SystemInfoVarList._TaskInfo[GetCurrentTaskIndex.index].CycleCount THEN
+    RETURN;
+END_IF
+
+IF Tests[idx].GetName() <> GVL_TcUnit.CurrentTestNameBeingCalled THEN
+    RETURN;
+END_IF
+
+_GetActiveWaitContext := idx;]]></ST>
+      </Implementation>
+    </Method>
     <Method Name="GetTimedTestResult" Id="{0d1b3cc6-3a78-434f-bd11-b934903f7c9d}">
       <Declaration><![CDATA[METHOD PUBLIC GetTimedTestResult : ST_TimedTestResult
 VAR_INPUT
@@ -39,7 +73,10 @@ VAR
     Test : REFERENCE TO FB_Test;
 END_VAR]]></Declaration>
       <Implementation>
-        <ST><![CDATA[idx := _FindTestIndex(TestName := TestName);
+        <ST><![CDATA[// Normalize the same way TEST(), TEST_ORDERED(), and TEST_TIMED() do
+TestName := F_LTrim(in := F_RTrim(in := TestName));
+
+idx := _FindTestIndex(TestName := TestName);
 IF idx = 0 THEN
     RETURN;
 END_IF
@@ -94,7 +131,6 @@ idx := _FindTestIndex(TestName := TestName);
 IF idx = 0 THEN
     RETURN;
 END_IF
-_nActiveTimedTestIdx := idx;
 
 // Step 6: Check already finished
 IF TimedTestStates[idx].bSafetyTimedOut OR IsTestFinished(TestName := TestName) THEN
@@ -131,7 +167,10 @@ IF lrElapsed > lrTimeout THEN
     RETURN;
 END_IF
 
-// Step 9: Test body should execute
+// Step 9: Test body should execute - arm the wait context for this cycle only
+_nActiveTimedTestIdx := idx;
+GetCurrentTaskIndex();
+_nActiveTimedTestCycle := TwinCAT_SystemInfoVarList._TaskInfo[GetCurrentTaskIndex.index].CycleCount;
 TEST_TIMED := TRUE;]]></ST>
       </Implementation>
     </Method>
@@ -207,7 +246,6 @@ idx := _FindTestIndex(TestName := TestName);
 IF idx = 0 THEN
     RETURN;
 END_IF
-_nActiveTimedTestIdx := idx;
 
 // Step 10: Check already timed out
 IF TimedTestStates[idx].bSafetyTimedOut THEN
@@ -249,7 +287,10 @@ IF __ISVALIDREF(Test) THEN
     Test.SetStartedAtIfNotSet(Timestamp := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
 END_IF
 
-// Step 14: Test body should execute
+// Step 14: Test body should execute - arm the wait context for this cycle only
+_nActiveTimedTestIdx := idx;
+GetCurrentTaskIndex();
+_nActiveTimedTestCycle := TwinCAT_SystemInfoVarList._TaskInfo[GetCurrentTaskIndex.index].CycleCount;
 TEST_TIMED_ORDERED := TRUE;]]></ST>
       </Implementation>
     </Method>
@@ -266,13 +307,16 @@ VAR
 END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[WaitForCondition := FALSE;
-idx := _nActiveTimedTestIdx;
+idx := _GetActiveWaitContext();
 
-// Step 1: Context check
+// Step 1: Context check (one-shot trace - this path is cyclic)
 IF idx = 0 THEN
-    TraceWithSeverity(
-        Message := 'WaitForCondition called without active timed test context',
-        Severity := TcEventSeverity.Error);
+    IF NOT bOutOfContextWaitTraced THEN
+        bOutOfContextWaitTraced := TRUE;
+        TraceWithSeverity(
+            Message := 'WaitForCondition called without active timed test context',
+            Severity := TcEventSeverity.Error);
+    END_IF
     RETURN;
 END_IF
 
@@ -356,13 +400,16 @@ VAR
 END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[WaitForTime := FALSE;
-idx := _nActiveTimedTestIdx;
+idx := _GetActiveWaitContext();
 
-// Step 1: Context check
+// Step 1: Context check (one-shot trace - this path is cyclic)
 IF idx = 0 THEN
-    TraceWithSeverity(
-        Message := 'WaitForTime called without active timed test context',
-        Severity := TcEventSeverity.Error);
+    IF NOT bOutOfContextWaitTraced THEN
+        bOutOfContextWaitTraced := TRUE;
+        TraceWithSeverity(
+            Message := 'WaitForTime called without active timed test context',
+            Severity := TcEventSeverity.Error);
+    END_IF
     RETURN;
 END_IF
 
@@ -411,10 +458,13 @@ END_IF]]></ST>
     <Property Name="WaitTimedOut" Id="{6125a451-2aab-41bb-83d8-06512aed2ebe}">
       <Declaration><![CDATA[PROPERTY PUBLIC WaitTimedOut : BOOL]]></Declaration>
       <Get Name="Get" Id="{70c9814c-731b-4ad8-8dae-52538dfcf02b}">
-        <Declaration><![CDATA[]]></Declaration>
+        <Declaration><![CDATA[VAR
+    idx : UINT;
+END_VAR]]></Declaration>
         <Implementation>
-          <ST><![CDATA[IF _nActiveTimedTestIdx > 0 THEN
-    WaitTimedOut := TimedTestStates[_nActiveTimedTestIdx].bConditionTimedOut;
+          <ST><![CDATA[idx := _GetActiveWaitContext();
+IF idx > 0 THEN
+    WaitTimedOut := TimedTestStates[idx].bConditionTimedOut;
 ELSE
     WaitTimedOut := FALSE;
 END_IF]]></ST>
