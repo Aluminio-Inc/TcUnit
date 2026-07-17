@@ -34,5 +34,6 @@ Procedure body is added by plan Task 5. This file starts with the Task 0 preflig
 
 Notes: the dirty `TwinCAT_Tests.plcproj` contains BOTH Scott's in-flight Raylase ADS campaign changes AND the TcUnit resolution bump `2026.4.9.1 -> 2026.7.17.1` applied during the 2026-07-17 toolchain validation (proven green, 30/30). Disposition decision recorded below when made.
 
-- Disposition: _pending_
-- `feat/tcunit-step0` created from: _pending_
+- Disposition (Scott, 2026-07-17): **Commit Raylase work first** — committed as `c82eb8d` "test: Raylase ADS command-bridge tests; consume TcUnit 2026.7.17.1" on `multi-sequencer-dispatch` (10 files; includes the plcproj with TcUnit resolution 2026.7.17.1).
+- `feat/tcunit-step0` created from: `c82eb8d`
+- Known carried dirty file: `TwinCAT_Tests/TwinCAT_Tests/DispatchTests/FB_SecondOrderTests.TcPOU` went modified after the disposition commit (likely the open XAE session) — Scott's second-order work, deliberately left untouched; expect it in later cleanliness checks.
