@@ -6,7 +6,10 @@
 TYPE E_WaitType :
 (
     None      := 0,
-    Time      := 1,
+    // 'Duration', not 'Time': TIME is an IEC reserved word; the compiler accepts a
+    // qualified_only member named Time, but the 4026 library packer NREs on any
+    // E_WaitType.Time reference during Save-as-Library (found 2026-07-17)
+    Duration  := 1,
     Condition := 2
 );
 END_TYPE]]></Declaration>

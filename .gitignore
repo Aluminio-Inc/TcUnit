@@ -377,3 +377,6 @@ _site
 .jekyll-cache
 .jekyll-metadata
 vendor
+
+# tpm durable run records (written to CWD by ToolPackageManager)
+runs/

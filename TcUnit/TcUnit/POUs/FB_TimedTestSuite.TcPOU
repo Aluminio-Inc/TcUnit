@@ -29,6 +29,37 @@ FOR i := 1 TO nMax BY 1 DO
 END_FOR]]></ST>
       </Implementation>
     </Method>
+    <Method Name="GetTimedTestResult" Id="{0d1b3cc6-3a78-434f-bd11-b934903f7c9d}">
+      <Declaration><![CDATA[METHOD PUBLIC GetTimedTestResult : ST_TimedTestResult
+VAR_INPUT
+    TestName : T_MaxString;
+END_VAR
+VAR
+    idx  : UINT;
+    Test : REFERENCE TO FB_Test;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[idx := _FindTestIndex(TestName := TestName);
+IF idx = 0 THEN
+    RETURN;
+END_IF
+
+Test REF= Tests[idx];
+IF NOT __ISVALIDREF(Test) THEN
+    RETURN;
+END_IF
+
+GetTimedTestResult.TestName := Test.GetName();
+GetTimedTestResult.bIsFailed := Test.IsFailed();
+GetTimedTestResult.bIsSkipped := Test.IsSkipped();
+GetTimedTestResult.bIsFinished := Test.IsFinished();
+GetTimedTestResult.sFailureMessage := Test.GetAssertionMessage();
+GetTimedTestResult.eFailureType := Test.GetAssertionType();
+GetTimedTestResult.nNumberOfAsserts := Test.GetNumberOfAssertions();
+GetTimedTestResult.lrDuration := Test.GetDuration();
+GetTimedTestResult.stTimedState := TimedTestStates[idx];]]></ST>
+      </Implementation>
+    </Method>
     <Method Name="TEST_TIMED" Id="{0013f9b0-ffec-48b5-9296-b6859eeadc7a}">
       <Declaration><![CDATA[METHOD PUBLIC TEST_TIMED : BOOL
 VAR_INPUT
@@ -104,175 +135,6 @@ END_IF
 TEST_TIMED := TRUE;]]></ST>
       </Implementation>
     </Method>
-    <Method Name="WaitForTime" Id="{0b99ca77-8d17-42e3-83bf-783cf70692bb}">
-      <Declaration><![CDATA[METHOD PUBLIC WaitForTime : BOOL
-VAR_INPUT
-    tDuration : TIME;
-END_VAR
-VAR
-    idx       : UINT;
-    lrElapsed : LREAL;
-    lrTarget  : LREAL;
-END_VAR]]></Declaration>
-      <Implementation>
-        <ST><![CDATA[WaitForTime := FALSE;
-idx := _nActiveTimedTestIdx;
-
-// Step 1: Context check
-IF idx = 0 THEN
-    TraceWithSeverity(
-        Message := 'WaitForTime called without active timed test context',
-        Severity := TcEventSeverity.Error);
-    RETURN;
-END_IF
-
-// Step 2: Pass-through if already complete
-IF TimedTestStates[idx].bWaitComplete THEN
-    WaitForTime := TRUE;
-    RETURN;
-END_IF
-
-// Step 3: Type mismatch check
-IF TimedTestStates[idx].eWaitType = E_WaitType.Condition THEN
-    SetTestFailed(AssertionType := E_AssertionType.Type_WAIT_MISUSE,
-                  AssertionMessage := 'WaitForTime called but WaitForCondition already active');
-    SetTestFinished(TestName := GVL_TcUnit.CurrentTestNameBeingCalled,
-                    FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
-    CalculateAndSetNumberOfAssertsForTest(TestName := GVL_TcUnit.CurrentTestNameBeingCalled);
-    GVL_TcUnit.CurrentTestIsFinished := TRUE;
-    RETURN;
-END_IF
-
-// Step 4: First call - start wait
-IF TimedTestStates[idx].nWaitStartTime = 0 THEN
-    TimedTestStates[idx].eWaitType := E_WaitType.Time;
-    TimedTestStates[idx].tLatchedDuration := tDuration;
-    TimedTestStates[idx].nWaitStartTime := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
-    TraceWithSeverity(
-        Message := CONCAT('Wait started: ', CONCAT(TIME_TO_STRING(tDuration), CONCAT(' for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')))),
-        Severity := TcEventSeverity.Verbose);
-    RETURN;
-END_IF
-
-// Steps 5-8: Check elapsed
-lrElapsed := ULINT_TO_LREAL(F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter) - TimedTestStates[idx].nWaitStartTime)
-             * GVL_TcUnit.HundredNanosecondToSecond;
-lrTarget := TIME_TO_LREAL(TimedTestStates[idx].tLatchedDuration) / 1000.0;
-
-IF lrElapsed >= lrTarget THEN
-    TimedTestStates[idx].bWaitComplete := TRUE;
-    TraceWithSeverity(
-        Message := CONCAT('Wait completed: ', CONCAT(LREAL_TO_FMTSTR(lrElapsed, 3, TRUE), CONCAT('s elapsed for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')))),
-        Severity := TcEventSeverity.Info);
-    WaitForTime := TRUE;
-END_IF]]></ST>
-      </Implementation>
-    </Method>
-    <Method Name="WaitForCondition" Id="{88c233a4-16ee-418c-977a-40982d9a34b2}">
-      <Declaration><![CDATA[METHOD PUBLIC WaitForCondition : BOOL
-VAR_INPUT
-    bCondition : BOOL;
-    tTimeout   : TIME;
-END_VAR
-VAR
-    idx       : UINT;
-    lrElapsed : LREAL;
-    lrTarget  : LREAL;
-END_VAR]]></Declaration>
-      <Implementation>
-        <ST><![CDATA[WaitForCondition := FALSE;
-idx := _nActiveTimedTestIdx;
-
-// Step 1: Context check
-IF idx = 0 THEN
-    TraceWithSeverity(
-        Message := 'WaitForCondition called without active timed test context',
-        Severity := TcEventSeverity.Error);
-    RETURN;
-END_IF
-
-// Step 2: Pass-through if already complete
-IF TimedTestStates[idx].bWaitComplete THEN
-    WaitForCondition := TRUE;
-    RETURN;
-END_IF
-
-// Step 3: Type mismatch check
-IF TimedTestStates[idx].eWaitType = E_WaitType.Time THEN
-    SetTestFailed(AssertionType := E_AssertionType.Type_WAIT_MISUSE,
-                  AssertionMessage := 'WaitForCondition called but WaitForTime already active');
-    SetTestFinished(TestName := GVL_TcUnit.CurrentTestNameBeingCalled,
-                    FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
-    CalculateAndSetNumberOfAssertsForTest(TestName := GVL_TcUnit.CurrentTestNameBeingCalled);
-    GVL_TcUnit.CurrentTestIsFinished := TRUE;
-    RETURN;
-END_IF
-
-// Step 4: First call with condition already TRUE - immediate completion
-IF bCondition AND TimedTestStates[idx].nWaitStartTime = 0 THEN
-    TimedTestStates[idx].bWaitComplete := TRUE;
-    TimedTestStates[idx].bConditionTimedOut := FALSE;
-    TimedTestStates[idx].eWaitType := E_WaitType.Condition;
-    TraceWithSeverity(
-        Message := CONCAT('WaitForCondition: condition already TRUE for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')),
-        Severity := TcEventSeverity.Info);
-    WaitForCondition := TRUE;
-    RETURN;
-END_IF
-
-// Step 5: First call, condition not yet met - start wait
-IF TimedTestStates[idx].nWaitStartTime = 0 THEN
-    TimedTestStates[idx].eWaitType := E_WaitType.Condition;
-    TimedTestStates[idx].tLatchedDuration := tTimeout;
-    TimedTestStates[idx].nWaitStartTime := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
-    TraceWithSeverity(
-        Message := CONCAT('WaitForCondition started: timeout ', CONCAT(TIME_TO_STRING(tTimeout), CONCAT(' for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')))),
-        Severity := TcEventSeverity.Verbose);
-    RETURN;
-END_IF
-
-// Step 6: Condition met during wait
-IF bCondition THEN
-    TimedTestStates[idx].bWaitComplete := TRUE;
-    TimedTestStates[idx].bConditionTimedOut := FALSE;
-    TraceWithSeverity(
-        Message := CONCAT('WaitForCondition: condition met for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')),
-        Severity := TcEventSeverity.Info);
-    WaitForCondition := TRUE;
-    RETURN;
-END_IF
-
-// Step 7: Check timeout
-lrElapsed := ULINT_TO_LREAL(F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter) - TimedTestStates[idx].nWaitStartTime)
-             * GVL_TcUnit.HundredNanosecondToSecond;
-lrTarget := TIME_TO_LREAL(TimedTestStates[idx].tLatchedDuration) / 1000.0;
-
-IF lrElapsed >= lrTarget THEN
-    TimedTestStates[idx].bWaitComplete := TRUE;
-    TimedTestStates[idx].bConditionTimedOut := TRUE;
-    TraceWithSeverity(
-        Message := CONCAT('WaitForCondition timed out after ', CONCAT(LREAL_TO_FMTSTR(lrElapsed, 3, TRUE), CONCAT('s for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')))),
-        Severity := TcEventSeverity.Warning);
-    WaitForCondition := TRUE;
-END_IF
-
-// Step 8: Still waiting - return FALSE (default)]]></ST>
-      </Implementation>
-    </Method>
-    <Property Name="WaitTimedOut" Id="{6125a451-2aab-41bb-83d8-06512aed2ebe}">
-      <Declaration><![CDATA[PROPERTY PUBLIC WaitTimedOut : BOOL]]></Declaration>
-      <Get Name="Get" Id="{70c9814c-731b-4ad8-8dae-52538dfcf02b}">
-        <Declaration><![CDATA[VAR
-END_VAR]]></Declaration>
-        <Implementation>
-          <ST><![CDATA[IF _nActiveTimedTestIdx > 0 THEN
-    WaitTimedOut := TimedTestStates[_nActiveTimedTestIdx].bConditionTimedOut;
-ELSE
-    WaitTimedOut := FALSE;
-END_IF]]></ST>
-        </Implementation>
-      </Get>
-    </Property>
     <Method Name="TEST_TIMED_ORDERED" Id="{5e0303e8-2443-4c00-9f81-4aeaec60b00c}">
       <Declaration><![CDATA[METHOD PUBLIC TEST_TIMED_ORDERED : BOOL
 VAR_INPUT
@@ -391,36 +253,173 @@ END_IF
 TEST_TIMED_ORDERED := TRUE;]]></ST>
       </Implementation>
     </Method>
-    <Method Name="GetTimedTestResult" Id="{0d1b3cc6-3a78-434f-bd11-b934903f7c9d}">
-      <Declaration><![CDATA[METHOD PUBLIC GetTimedTestResult : ST_TimedTestResult
+    <Method Name="WaitForCondition" Id="{88c233a4-16ee-418c-977a-40982d9a34b2}">
+      <Declaration><![CDATA[METHOD PUBLIC WaitForCondition : BOOL
 VAR_INPUT
-    TestName : T_MaxString;
+    bCondition : BOOL;
+    tTimeout   : TIME;
 END_VAR
 VAR
-    idx  : UINT;
-    Test : REFERENCE TO FB_Test;
+    idx       : UINT;
+    lrElapsed : LREAL;
+    lrTarget  : LREAL;
 END_VAR]]></Declaration>
       <Implementation>
-        <ST><![CDATA[idx := _FindTestIndex(TestName := TestName);
+        <ST><![CDATA[WaitForCondition := FALSE;
+idx := _nActiveTimedTestIdx;
+
+// Step 1: Context check
 IF idx = 0 THEN
+    TraceWithSeverity(
+        Message := 'WaitForCondition called without active timed test context',
+        Severity := TcEventSeverity.Error);
     RETURN;
 END_IF
 
-Test REF= Tests[idx];
-IF NOT __ISVALIDREF(Test) THEN
+// Step 2: Pass-through if already complete
+IF TimedTestStates[idx].bWaitComplete THEN
+    WaitForCondition := TRUE;
     RETURN;
 END_IF
 
-GetTimedTestResult.TestName := Test.GetName();
-GetTimedTestResult.bIsFailed := Test.IsFailed();
-GetTimedTestResult.bIsSkipped := Test.IsSkipped();
-GetTimedTestResult.bIsFinished := Test.IsFinished();
-GetTimedTestResult.sFailureMessage := Test.GetAssertionMessage();
-GetTimedTestResult.eFailureType := Test.GetAssertionType();
-GetTimedTestResult.nNumberOfAsserts := Test.GetNumberOfAssertions();
-GetTimedTestResult.lrDuration := Test.GetDuration();
-GetTimedTestResult.stTimedState := TimedTestStates[idx];]]></ST>
+// Step 3: Type mismatch check
+IF TimedTestStates[idx].eWaitType = E_WaitType.Duration THEN
+    SetTestFailed(AssertionType := E_AssertionType.Type_WAIT_MISUSE,
+                  AssertionMessage := 'WaitForCondition called but WaitForTime already active');
+    SetTestFinished(TestName := GVL_TcUnit.CurrentTestNameBeingCalled,
+                    FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
+    CalculateAndSetNumberOfAssertsForTest(TestName := GVL_TcUnit.CurrentTestNameBeingCalled);
+    GVL_TcUnit.CurrentTestIsFinished := TRUE;
+    RETURN;
+END_IF
+
+// Step 4: First call with condition already TRUE - immediate completion
+IF bCondition AND TimedTestStates[idx].nWaitStartTime = 0 THEN
+    TimedTestStates[idx].bWaitComplete := TRUE;
+    TimedTestStates[idx].bConditionTimedOut := FALSE;
+    TimedTestStates[idx].eWaitType := E_WaitType.Condition;
+    TraceWithSeverity(
+        Message := CONCAT('WaitForCondition: condition already TRUE for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')),
+        Severity := TcEventSeverity.Info);
+    WaitForCondition := TRUE;
+    RETURN;
+END_IF
+
+// Step 5: First call, condition not yet met - start wait
+IF TimedTestStates[idx].nWaitStartTime = 0 THEN
+    TimedTestStates[idx].eWaitType := E_WaitType.Condition;
+    TimedTestStates[idx].tLatchedDuration := tTimeout;
+    TimedTestStates[idx].nWaitStartTime := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
+    TraceWithSeverity(
+        Message := CONCAT('WaitForCondition started: timeout ', CONCAT(TIME_TO_STRING(tTimeout), CONCAT(' for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')))),
+        Severity := TcEventSeverity.Verbose);
+    RETURN;
+END_IF
+
+// Step 6: Condition met during wait
+IF bCondition THEN
+    TimedTestStates[idx].bWaitComplete := TRUE;
+    TimedTestStates[idx].bConditionTimedOut := FALSE;
+    TraceWithSeverity(
+        Message := CONCAT('WaitForCondition: condition met for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')),
+        Severity := TcEventSeverity.Info);
+    WaitForCondition := TRUE;
+    RETURN;
+END_IF
+
+// Step 7: Check timeout
+lrElapsed := ULINT_TO_LREAL(F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter) - TimedTestStates[idx].nWaitStartTime)
+             * GVL_TcUnit.HundredNanosecondToSecond;
+lrTarget := TIME_TO_LREAL(TimedTestStates[idx].tLatchedDuration) / 1000.0;
+
+IF lrElapsed >= lrTarget THEN
+    TimedTestStates[idx].bWaitComplete := TRUE;
+    TimedTestStates[idx].bConditionTimedOut := TRUE;
+    TraceWithSeverity(
+        Message := CONCAT('WaitForCondition timed out after ', CONCAT(LREAL_TO_FMTSTR(lrElapsed, 3, TRUE), CONCAT('s for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')))),
+        Severity := TcEventSeverity.Warning);
+    WaitForCondition := TRUE;
+END_IF
+
+// Step 8: Still waiting - return FALSE (default)]]></ST>
       </Implementation>
     </Method>
+    <Method Name="WaitForTime" Id="{0b99ca77-8d17-42e3-83bf-783cf70692bb}">
+      <Declaration><![CDATA[METHOD PUBLIC WaitForTime : BOOL
+VAR_INPUT
+    tDuration : TIME;
+END_VAR
+VAR
+    idx       : UINT;
+    lrElapsed : LREAL;
+    lrTarget  : LREAL;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[WaitForTime := FALSE;
+idx := _nActiveTimedTestIdx;
+
+// Step 1: Context check
+IF idx = 0 THEN
+    TraceWithSeverity(
+        Message := 'WaitForTime called without active timed test context',
+        Severity := TcEventSeverity.Error);
+    RETURN;
+END_IF
+
+// Step 2: Pass-through if already complete
+IF TimedTestStates[idx].bWaitComplete THEN
+    WaitForTime := TRUE;
+    RETURN;
+END_IF
+
+// Step 3: Type mismatch check
+IF TimedTestStates[idx].eWaitType = E_WaitType.Condition THEN
+    SetTestFailed(AssertionType := E_AssertionType.Type_WAIT_MISUSE,
+                  AssertionMessage := 'WaitForTime called but WaitForCondition already active');
+    SetTestFinished(TestName := GVL_TcUnit.CurrentTestNameBeingCalled,
+                    FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
+    CalculateAndSetNumberOfAssertsForTest(TestName := GVL_TcUnit.CurrentTestNameBeingCalled);
+    GVL_TcUnit.CurrentTestIsFinished := TRUE;
+    RETURN;
+END_IF
+
+// Step 4: First call - start wait
+IF TimedTestStates[idx].nWaitStartTime = 0 THEN
+    TimedTestStates[idx].eWaitType := E_WaitType.Duration;
+    TimedTestStates[idx].tLatchedDuration := tDuration;
+    TimedTestStates[idx].nWaitStartTime := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
+    TraceWithSeverity(
+        Message := CONCAT('Wait started: ', CONCAT(TIME_TO_STRING(tDuration), CONCAT(' for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')))),
+        Severity := TcEventSeverity.Verbose);
+    RETURN;
+END_IF
+
+// Steps 5-8: Check elapsed
+lrElapsed := ULINT_TO_LREAL(F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter) - TimedTestStates[idx].nWaitStartTime)
+             * GVL_TcUnit.HundredNanosecondToSecond;
+lrTarget := TIME_TO_LREAL(TimedTestStates[idx].tLatchedDuration) / 1000.0;
+
+IF lrElapsed >= lrTarget THEN
+    TimedTestStates[idx].bWaitComplete := TRUE;
+    TraceWithSeverity(
+        Message := CONCAT('Wait completed: ', CONCAT(LREAL_TO_FMTSTR(lrElapsed, 3, TRUE), CONCAT('s elapsed for test "', CONCAT(GVL_TcUnit.CurrentTestNameBeingCalled, '"')))),
+        Severity := TcEventSeverity.Info);
+    WaitForTime := TRUE;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="WaitTimedOut" Id="{6125a451-2aab-41bb-83d8-06512aed2ebe}">
+      <Declaration><![CDATA[PROPERTY PUBLIC WaitTimedOut : BOOL]]></Declaration>
+      <Get Name="Get" Id="{70c9814c-731b-4ad8-8dae-52538dfcf02b}">
+        <Declaration><![CDATA[]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[IF _nActiveTimedTestIdx > 0 THEN
+    WaitTimedOut := TimedTestStates[_nActiveTimedTestIdx].bConditionTimedOut;
+ELSE
+    WaitTimedOut := FALSE;
+END_IF]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
   </POU>
 </TcPlcObject>

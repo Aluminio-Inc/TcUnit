@@ -135,6 +135,24 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 **Cause**: Declaring data immutable provides no cross-core memory-ordering guarantee, and any self-evaluated deadline requires the task to still be running.
 **Solution**: Two synchronized handoffs carry all cross-task ordering: runners acknowledge the published plan generation before the execution gate opens, and each task publishes a one-shot quiescence record after its final suite-state write. The reporter reads suite state only from quiesced tasks and represents unresponsive tasks with a synthetic infrastructure result (never a partial shard). Detection of a stopped task belongs to *another* clock: a reporter-owned global execution deadline, plus an external verifier watchdog for the case where the reporter itself (or everything) stops. See the Phase 5 design spec §E–§F.
 
+### 22. Reserved-Word Enum Members Compile but Break Save-as-Library
+
+**Symptom**: "Creating Library failed! Object reference not set to an instance of an object." in XAE AND via automation (`SaveAsLibrary` E_POINTER/NRE), while Build succeeds cleanly. Found 2026-07-17; present since the timed suite was authored 2026-05-21 (no library save had been attempted in between — the fault window was invisible).
+**Cause**: `E_WaitType` declared a member named `Time`. `TIME` is an IEC 61131-3 reserved type keyword (parser is case-insensitive). With `{attribute 'qualified_only'}` the compiler accepts both the declaration and `E_WaitType.Time` references — but the 4026.21 library packer NREs on any method whose body references the member. Bisection signature: excluding exactly the members referencing the literal makes the save succeed.
+**Solution**: Renamed to `E_WaitType.Duration`. The reserved-keyword rule covers **every identifier**: variables, parameters, AND enum members. Scan before authoring new DUTs: `(?i)^\s*(TIME|LTIME|DATE|DT|TOD|TIME_OF_DAY|DATE_AND_TIME)\s*:=` inside `TYPE ... ( ... );` blocks. Diagnostic recipe when the packer NREs with a green build: bisect `<Compile Include>` entries, then members, then stub method bodies — `tpm library save` gives a ~3-minute click-free iteration loop.
+
+### 23. Library Project References Must Resolve Headless
+
+**Symptom**: COM/automation build fails with bare `E_FAIL` ("2 project(s) failed") while interactive XAE builds work; error list (read via typed `EnvDTE80.DTE2`, not dynamic dispatch) shows "Could not open library '#Base'" or "Following library is missing: Tc3_Module".
+**Cause**: Two stacked resolution faults: (a) the Base `PlaceholderResolution` pinned `2026.4.8.2`, a version no longer installed on this machine; (b) the plcproj never referenced `Tc3_Module`, which 4026 requires — interactive XAE silently auto-resolves both, headless sessions fail hard.
+**Solution**: Keep pins on installed versions (`Base, *` acceptable for this fork; TwinCAT_Tests governs the effective Base) and keep the `Tc3_Module` placeholder in the plcproj. Rebuilding after months of Base evolution REQUIRES a repin — old Base versions get cleaned from the repository.
+
+### 24. A Library Project Needs No Task
+
+**Symptom**: The TcUnit library instance carried Base's `GVL_System.FileHandlerCsv/Json/Xml` EtherCAT-linked input variables ("BuildTask Inputs" in the xti) after rebuilding against 2026.7.x Base.
+**Cause**: `BuildTask` (added 2026-04-09) made the build instantiate referenced-library `linkalways` globals, pulling Base's IO-mapped file-handler instances into the library's instance image. Upstream TcUnit's library project has no task — that is the correct shape.
+**Solution**: BuildTask removed (tsproj task block, plcproj TcTTO entry, file). The sln was also trimmed to x64-only configurations (fresh COM sessions default to the first configuration alphabetically, which was ARM/CE7). Note: `SaveAsLibrary` automation itself works fine on 4026.21 (`tpm library save`) — the earlier "automation regression" suspicion was actually Gotcha #22's content fault.
+
 ---
 
 ## Architecture Patterns

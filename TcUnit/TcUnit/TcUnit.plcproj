@@ -32,7 +32,7 @@ Documentation and examples are available at www.tcunit.org</Description>
     </SelectedLibraryCategories>
     <Company>www.tcunit.org</Company>
     <Author>Jakob Sagatowski and contributors</Author>
-    <ProjectVersion>2026.4.9.1</ProjectVersion>
+    <ProjectVersion>2026.7.17.1</ProjectVersion>
     <WriteProductVersion>false</WriteProductVersion>
     <GlobalVersionStructureIncluded>true</GlobalVersionStructureIncluded>
     <!--    <OutputType>Exe</OutputType>
@@ -49,9 +49,6 @@ Documentation and examples are available at www.tcunit.org</Description>
     <Folder Include="Version" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="BuildTask.TcTTO">
-      <SubType>Code</SubType>
-    </Compile>
     <Compile Include="DUTs\E_AssertionType.TcDUT">
       <SubType>Code</SubType>
     </Compile>
@@ -293,6 +290,10 @@ Documentation and examples are available at www.tcunit.org</Description>
       <DefaultResolution>Tc2_Utilities, * (Beckhoff Automation GmbH)</DefaultResolution>
       <Namespace>Tc2_Utilities</Namespace>
     </PlaceholderReference>
+    <PlaceholderReference Include="Tc3_Module">
+      <DefaultResolution>Tc3_Module, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc3_Module</Namespace>
+    </PlaceholderReference>
   </ItemGroup>
   <ItemGroup>
     <None Include="TcUnit.tmc">
@@ -306,7 +307,7 @@ Documentation and examples are available at www.tcunit.org</Description>
   </ItemGroup>
   <ItemGroup>
     <PlaceholderResolution Include="Base">
-      <Resolution>Base, 2026.4.8.2 (Photara)</Resolution>
+      <Resolution>Base, 2026.6.22.1 (Photara)</Resolution>
     </PlaceholderResolution>
   </ItemGroup>
   <ProjectExtensions>
