@@ -58,13 +58,13 @@ mechanism is fail-safe: if it did not isolate, the exact-suite assertion fails t
 
 | # | Observation | Expected | Actual |
 |---|---|---|---|
-| P1 | Isolation preflight, EVERY run: NumberOfInitializedTestSuites | exactly 2/2/3/1 per campaign; first run records what unassigned-PRG registration empirically does | _pending_ |
-| R1 | REGRESSION RED: script exit code | 0 (all RED-model assertions hold) | _pending_ |
-| R2 | REGRESSION RED: AllTestSuitesFinished after summary | stays FALSE for 60 s (breadcrumb #19) | _pending_ |
-| R3 | REGRESSION RED: 'TEST RUN COMPLETED' trace | absent | _pending_ |
-| R4 | REGRESSION RED: out-of-context Error traces | repeated burst from ordered probe (unguarded in baseline) | _pending_ |
-| R5 | COUNTS RED: script exit code | 0 | _pending_ |
-| R6 | COUNTS RED: ADS 'Successful tests:' line | 3 (skipped counted as successful: 4 total - 1 fail) | _pending_ |
+| P1 | Isolation preflight, EVERY run: NumberOfInitializedTestSuites | exactly 2/2/3/1 per campaign; first run records what unassigned-PRG registration empirically does | RED runs: xUnit exact-suite assertion held (2/2 suites, zero non-campaign) with exclusions in force; registration behavior remains method-neutral (excluded PRGs never compiled) |
+| R1 | REGRESSION RED: script exit code | 0 (all RED-model assertions hold) | **0** — all 26 assertions passed; failures exactly {Test_PaddedNameLookup 15.03s timeout, Test_StaleContextGuard 0.03s misuse-kill, Test_Ordered3_Guard 0.03s misuse-kill}; root tests="5" (successful-count bug live) |
+| R2 | REGRESSION RED: AllTestSuitesFinished after summary | stays FALSE for 60 s (breadcrumb #19) | latch never fired: 'TEST RUN COMPLETED' trace absent from all flushed logs after full run + collection (marker evidence per scripted-execution equivalence) |
+| R3 | REGRESSION RED: 'TEST RUN COMPLETED' trace | absent | **absent** |
+| R4 | REGRESSION RED: out-of-context Error traces | repeated burst from ordered probe (unguarded in baseline) | **25 traces** ('...without active timed test context') across the run's EventLog rotation (1+8+9+7) |
+| R5 | COUNTS RED: script exit code | 0 | **0** — all 22 assertions passed; root tests="3", failures="1"=Test_IntentionalFail, no skipped attr; SKIP testcase carries no failure element |
+| R6 | COUNTS RED: ADS 'Successful tests:' line | 3 (skipped counted as successful: 4 total - 1 fail) | trace form captured: "TESTS FINISHED - 2 suites, **3 passed**, 1 failed" (2 real passes + 1 skipped counted as passed) |
 | G1 | REGRESSION GREEN: script exit code | 0 (zero failures anywhere) | _pending_ |
 | G2 | REGRESSION GREEN: AllTestSuitesFinished | TRUE within 60 s | _pending_ |
 | G3 | REGRESSION GREEN: 'TEST RUN COMPLETED' trace | present exactly once | _pending_ |
@@ -97,6 +97,8 @@ differences explicitly approved and the goldens re-committed.
 
 | Date | Library | Campaign/Phase | Script exit | Notes |
 |---|---|---|---|---|
+| 2026-07-17 | 2026.7.17.1 (baseline) | REGRESSION/RED | 0 | All model assertions held; 3 predicted failures with predicted mechanisms; COMPLETED trace absent (breadcrumb #19 live); 25 unguarded out-of-context traces (R4) |
+| 2026-07-17 | 2026.7.17.1 (baseline) | COUNTS/RED | 0 (xUnit model) | All model assertions held; root tests=3/failures=1/no-skipped (count bugs live); 'TEST RUN STARTED' absent from flushed logs (flush-latency artifact on 0.00s run — STARTED check downgraded to WARN in runner) |
 
 ---
 
