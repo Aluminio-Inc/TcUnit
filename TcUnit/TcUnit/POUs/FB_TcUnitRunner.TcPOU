@@ -33,8 +33,9 @@ END_VAR]]></Declaration>
 METHOD INTERNAL AbortRunningTestSuiteTests]]></Declaration>
       <Implementation>
         <ST><![CDATA[AbortRunningTestSuites := TRUE;
+(* Request semantics only; the runner emits 'TEST RUN ABORTED' when it honors the flag *)
 TraceWithSeverity(
-    Message := 'TEST RUN ABORTED',
+    Message := 'TEST RUN ABORT REQUESTED',
     Severity := Global.TcEventSeverity.Warning);]]></ST>
       </Implementation>
     </Method>
@@ -80,6 +81,12 @@ IF NOT AllTestSuitesFinished THEN
         (* Check if some event triggered an abortion of running the tests, in that case abort it now.
            This can be accomplished by setting the result of the test suites run to finished. *)
         IF AbortRunningTestSuites THEN
+            (* Observed-abort effect trace: fires when the runner honors the abort flag,
+               including raw online writes that never call AbortRunningTestSuiteTests().
+               Naturally one-shot - the completion latch closes this branch next scan. *)
+            TraceWithSeverity(
+                Message := 'TEST RUN ABORTED',
+                Severity := Global.TcEventSeverity.Warning);
             NumberOfTestSuitesFinished := GVL_TcUnit.NumberOfInitializedTestSuites;
         END_IF
 
@@ -174,6 +181,12 @@ IF NOT AllTestSuitesFinished THEN
         (* Check if some event triggered an abortion of running the tests, in that case abort it now.
            This can be accomplished by setting the result of the test suites run to finished. *)
         IF AbortRunningTestSuites THEN
+            (* Observed-abort effect trace: fires when the runner honors the abort flag,
+               including raw online writes that never call AbortRunningTestSuiteTests().
+               Naturally one-shot - the completion latch closes this branch next scan. *)
+            TraceWithSeverity(
+                Message := 'TEST RUN ABORTED',
+                Severity := Global.TcEventSeverity.Warning);
             NumberOfTestSuitesFinished := GVL_TcUnit.NumberOfInitializedTestSuites;
         END_IF
         IF NumberOfTestSuitesFinished = GVL_TcUnit.NumberOfInitializedTestSuites THEN
