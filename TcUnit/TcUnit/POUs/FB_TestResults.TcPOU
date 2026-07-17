@@ -44,6 +44,10 @@ IF StoringTestSuiteResultNumber <= GVL_TcUnit.NumberOfInitializedTestSuites AND 
         TestSuiteResults.TestSuiteResults[StoringTestSuiteResultNumber].NumberOfFailedTests :=
             GVL_TcUnit.TestSuiteAddresses[StoringTestSuiteResultNumber]^.GetNumberOfFailedTests();
 
+        // Store number of skipped tests in test suite
+        TestSuiteResults.TestSuiteResults[StoringTestSuiteResultNumber].NumberOfSkippedTests :=
+            GVL_TcUnit.TestSuiteAddresses[StoringTestSuiteResultNumber]^.GetNumberOfSkippedTests();
+
         // Store the duration
         TestSuiteResults.TestSuiteResults[StoringTestSuiteResultNumber].Duration :=
             GVL_TcUnit.TestSuiteAddresses[StoringTestSuiteResultNumber]^.GetDuration();
@@ -107,10 +111,13 @@ ELSIF StoringTestSuiteResultNumber = GVL_TcUnit.NumberOfInitializedTestSuites AN
     TestSuiteResults.Duration := GVL_TcUnit.Duration;
     FOR GeneralTestResultsTestSuitesCounter := 1 TO GVL_TcUnit.NumberOfInitializedTestSuites BY 1 DO
         TestSuiteResults.NumberOfTestCases := TestSuiteResults.NumberOfTestCases + TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfTests;
+        (* A skipped test is not a successful test: total = passed + failed + skipped *)
         TestSuiteResults.NumberOfSuccessfulTestCases := TestSuiteResults.NumberOfSuccessfulTestCases +
                                                         (TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfTests -
-                                                         TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfFailedTests);
+                                                         TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfFailedTests -
+                                                         TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfSkippedTests);
         TestSuiteResults.NumberOfFailedTestCases := TestSuiteResults.NumberOfFailedTestCases + TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfFailedTests;
+        TestSuiteResults.NumberOfSkippedTestCases := TestSuiteResults.NumberOfSkippedTestCases + TestSuiteResults.TestSuiteResults[GeneralTestResultsTestSuitesCounter].NumberOfSkippedTests;
     END_FOR
     StoredGeneralTestResults := TRUE;
 END_IF]]></ST>

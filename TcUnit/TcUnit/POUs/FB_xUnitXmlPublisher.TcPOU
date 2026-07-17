@@ -112,8 +112,10 @@ IF PublishTrigger.Q THEN
     // <testsuites>
     Xml.NewTag('testsuites');
     Xml.NewParameter('disabled', '');
-    Xml.NewParameter('failures', UINT_TO_STRING(UnitTestResults.NumberOfFailedTestCases));
-    Xml.NewParameter('tests', UINT_TO_STRING(UnitTestResults.NumberOfSuccessfulTestCases));
+    Xml.NewParameter('failures', UDINT_TO_STRING(UnitTestResults.NumberOfFailedTestCases));
+    (* 'tests' is the TOTAL testcase count; the previous successful-only value was a bug *)
+    Xml.NewParameter('tests', UDINT_TO_STRING(UnitTestResults.NumberOfTestCases));
+    Xml.NewParameter('skipped', UDINT_TO_STRING(UnitTestResults.NumberOfSkippedTestCases));
     Xml.NewParameter('time', LREAL_TO_STRING(UnitTestResults.Duration));
 
     FOR CurrentSuiteNumber := 1 TO UnitTestResults.NumberOfTestSuites BY 1 DO
@@ -123,6 +125,7 @@ IF PublishTrigger.Q THEN
         Xml.NewParameter('name', UnitTestResults.TestSuiteResults[CurrentSuiteNumber].name);
         Xml.NewParameter('tests', UINT_TO_STRING(UnitTestResults.TestSuiteResults[CurrentSuiteNumber].NumberOfTests));
         Xml.NewParameter('failures', UINT_TO_STRING(UnitTestResults.TestSuiteResults[CurrentSuiteNumber].NumberOfFailedTests));
+        Xml.NewParameter('skipped', UINT_TO_STRING(UnitTestResults.TestSuiteResults[CurrentSuiteNumber].NumberOfSkippedTests));
         Xml.NewParameter('time', LREAL_TO_STRING(UnitTestResults.TestSuiteResults[CurrentSuiteNumber].Duration));
 
         FOR CurrentTestCount := 1 TO UnitTestResults.TestSuiteResults[CurrentSuiteNumber].NumberOfTests BY 1 DO
