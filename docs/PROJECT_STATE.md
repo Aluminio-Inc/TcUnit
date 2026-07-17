@@ -61,7 +61,7 @@ _Nothing blocked._
 | FB_AssertResultStatic | Modified | EXTENDS FB_BaseStatic; assert buffer overflow (Error) trace; dead-code typo fix in GetDetectionCountThisCycle |
 | FB_AssertArrayResultStatic | Modified | EXTENDS FB_BaseStatic; array assert buffer overflow (Error) trace |
 | FB_TimedTestSuite | **New** | EXTENDS FB_TestSuite; real-time elapsed testing — TEST_TIMED, TEST_TIMED_ORDERED, WaitForTime, WaitForCondition, WaitTimedOut property, GetTimedTestResult, _FindTestIndex |
-| E_WaitType | **New** | Enum: None, Time, Condition |
+| E_WaitType | **New** | Enum: None, Duration, Condition (member renamed from `Time` 2026-07-17 — reserved word broke Save-as-Library, Gotcha #22) |
 | ST_TimedTestState | **New** | Per-test wait state struct (safety timeout + wait tracking) |
 | ST_TimedTestResult | **New** | Read-only composite for Level 2 verifier inspection |
 
