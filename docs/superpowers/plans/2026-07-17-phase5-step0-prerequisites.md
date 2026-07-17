@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Revision 2** — incorporates the 2026-07-17 plan review: release tag gated behind GREEN evidence and verifier run; explicit xUnit path override with freshness check; UDINT aggregate counts; ordered-timed and out-of-context WaitForCondition/WaitTimedOut coverage; single-suite/empty-suite/delay/abort sequential coverage; XML semantic verifier script replacing manual table checks; all-passing regression campaign split from the intentional-failure counts campaign; SIZEOF/compile evidence; dirty-repo preflight; Parameters-block merge; no forced commit attribution.
+**Revision 3** — Rev 2 incorporated the first review (release gating, xUnit path/freshness, UDINT aggregates, verifier gate, ordered coverage, campaign split, XML semantic assertions, preflight, Parameters merge, attribution removal). Rev 3 incorporates the second review: campaign isolation replaces the unverified multi-PRG registration assumption (exclude-from-build per campaign + empirical suite-count preflight + hard failure on unexpected suites), a dedicated deterministic abort campaign, and a verifier-repo cleanliness gate after the manual S1 switch.
 
 **Goal:** Complete the Step-0 prerequisites of the multi-task tagged execution design: harden FB_TimedTestSuite (Phase 4a), fix the RUN_IN_SEQUENCE completion latch, correct xUnit count semantics with UDINT-wide aggregates, and prove all three with committed red-green verification campaigns, ending with library 2026.7.17.1 released only after GREEN + verifier evidence.
 
@@ -28,7 +28,7 @@ This is **Plan 1 of the Phase 5 series** (spec: `docs/superpowers/specs/2026-07-
 - XAE builds/runs are USER ACTIONS — Scott runs them; the executor prepares exact instructions and waits for reported results before proceeding.
 - `TcUnit.library` at the fork repo root is currently deleted in the working tree (pre-existing). It is regenerated in Task 10 and committed only in Task 13 — do not restore or commit it earlier.
 - Campaign xUnit path: `%TC_BOOTPRJPATH%tcunit_step0_xunit.xml` (resolves to `C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml` on this machine). TcUnit's default is `%TC_BOOTPRJPATH%tcunit_xunit_testresults.xml` — the campaign uses its own name so no other run can be mistaken for it.
-- **Multi-PRG registration fact** (drives all count expectations): every suite instance declared in ANY compiled PRG registers via `FB_init` at PLC start, regardless of task assignment. Suites of inactive PRGs never execute, register zero tests, and count as trivially finished. Therefore: campaign totals come only from the active PRG's suites; the verifier script asserts every non-campaign suite reports `tests="0"`; suite `id` attributes depend on opaque registration order and are never asserted.
+- **Campaign isolation** (drives all count expectations): whether suite instances in PRGs not assigned to any task register via `FB_init` is deliberately NOT assumed — it is a TwinCAT linker/initialization behavior this plan verifies empirically instead of asserting. Every campaign run therefore: (a) excludes ALL non-campaign test PRGs from build (`PRG_TEST_*` and the other step-0 campaign PRGs) via XAE "Exclude from build"; (b) asserts `TcUnit.GVL_TcUnit.NumberOfInitializedTestSuites` equals the exact campaign suite count online before results are trusted — a mismatch is a hard STOP (isolation broken or registration behaves unexpectedly; record what was observed); (c) the verifier script hard-fails on ANY suite in the xUnit file that is not in the campaign model. Suite `id` attributes depend on registration order and are never asserted. What the preflight empirically shows about unassigned-PRG registration is recorded in the verification doc — it settles a question the Phase 5 design needs answered anyway.
 
 ---
 
@@ -255,18 +255,19 @@ git commit -m "test(tcunit-step0): ordered timed-suite coverage + out-of-context
 ### Task 3: Fixtures, edge suites, three campaign PRGs, plcproj wiring (TwinCAT_Tests)
 
 **Files:**
-- Create (in `...\TwinCAT_Tests\TcUnitTests\`): `FB_StepZeroSimplePass.TcPOU`, `FB_StepZeroEmptySuite.TcPOU`, `FB_StepZeroCounts_ShouldFail.TcPOU`, `PRG_TEST_TCUNIT_STEP0.TcPOU`, `PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU`, `PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU`
+- Create (in `...\TwinCAT_Tests\TcUnitTests\`): `FB_StepZeroSimplePass.TcPOU`, `FB_StepZeroEmptySuite.TcPOU`, `FB_StepZeroCounts_ShouldFail.TcPOU`, `FB_StepZeroAbortSuite.TcPOU`, `PRG_TEST_TCUNIT_STEP0.TcPOU`, `PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU`, `PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU`, `PRG_TEST_TCUNIT_STEP0_ABORT.TcPOU`
 - Modify: `C:\Users\scott\Documents\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests\TwinCAT_Tests.plcproj`
 
 **Interfaces:**
 - Consumes: suites from Tasks 1-2; TcUnit `disabled_` prefix (registers the test as `Test_Skipped`, skipped).
-- Produces: three campaigns —
-  - `PRG_TEST_TCUNIT_STEP0` (REGRESSION, all-passing when green): `TimedSuiteTests`, `TimedOrderedTests`. GREEN = zero failures anywhere.
-  - `PRG_TEST_TCUNIT_STEP0_COUNTS` (COUNTS, intentional-failure fixture): `PassSuite`, `CountsSuite_ShouldFail`. GREEN = exactly one failure, identity `Test_IntentionalFail` (script-asserted).
-  - `PRG_TEST_TCUNIT_STEP0_EDGE` (EDGE, green-only): `EmptyFirstSuite`, `MidPassSuite`, `EmptyFinalSuite` — empty-first and empty-final suite traversal.
-  All run `TcUnit.RUN_IN_SEQUENCE()` with a nonzero inter-suite delay (GPL override `T#100MS`).
+- Produces: four campaigns —
+  - `PRG_TEST_TCUNIT_STEP0` (REGRESSION, all-passing when green): `TimedSuiteTests`, `TimedOrderedTests` (2 suites). GREEN = zero failures anywhere.
+  - `PRG_TEST_TCUNIT_STEP0_COUNTS` (COUNTS, intentional-failure fixture): `PassSuite`, `CountsSuite_ShouldFail` (2 suites). GREEN = exactly one failure, identity `Test_IntentionalFail` (script-asserted).
+  - `PRG_TEST_TCUNIT_STEP0_EDGE` (EDGE, green-only): `EmptyFirstSuite`, `MidPassSuite`, `EmptyFinalSuite` (3 suites) — empty-first and empty-final suite traversal.
+  - `PRG_TEST_TCUNIT_STEP0_ABORT` (ABORT, green-only): `AbortSuite` (1 suite) — deterministic abort window: its only test waits on a 5-minute condition timeout, so the run cannot complete on its own during the session and the operator aborts unhurried.
+  All run `TcUnit.RUN_IN_SEQUENCE()` with a nonzero inter-suite delay (GPL override `T#100MS`). Campaign suite counts (2/2/3/1) are the expected `NumberOfInitializedTestSuites` values for the isolation preflight.
 
-- [ ] **Step 1: Generate six fresh GUIDs** (`<GUID-3>`…`<GUID-8>`), uniqueness-checked as before.
+- [ ] **Step 1: Generate eight fresh GUIDs** (`<GUID-3>`…`<GUID-10>`), uniqueness-checked as before.
 
 - [ ] **Step 2: Write the three suite FBs**
 
@@ -332,14 +333,38 @@ TEST_FINISHED();]]></ST>
 </TcPlcObject>
 ```
 
-- [ ] **Step 3: Write the three campaign PRGs**
-
-`PRG_TEST_TCUNIT_STEP0.TcPOU` (`<GUID-6>`):
+`FB_StepZeroAbortSuite.TcPOU` (`<GUID-6>`):
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
-  <POU Name="PRG_TEST_TCUNIT_STEP0" Id="<GUID-6>" SpecialFunc="None">
+  <POU Name="FB_StepZeroAbortSuite" Id="<GUID-6>" SpecialFunc="None">
+    <Declaration><![CDATA[(* Deterministic abort-window suite: the single test waits on a condition that
+   never becomes TRUE with a 5-minute timeout, so the ABORT campaign cannot
+   complete on its own during the session. The operator verifies the run is
+   in progress, writes AbortRunningTestSuites := TRUE, and observes the latch.
+   If the abort is never issued, the 5-minute timeout fails the test closed. *)
+FUNCTION_BLOCK FB_StepZeroAbortSuite EXTENDS TcUnit.FB_TimedTestSuite]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF TEST_TIMED(TestName := 'Test_AbortWindow', tSafetyTimeout := T#10M) THEN
+    IF WaitForCondition(bCondition := FALSE, tTimeout := T#5M) THEN
+        AssertTrue(Condition := FALSE, Message := 'Abort was not issued within 5 minutes');
+        TEST_FINISHED();
+    END_IF
+END_IF]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
+- [ ] **Step 3: Write the four campaign PRGs**
+
+`PRG_TEST_TCUNIT_STEP0.TcPOU` (`<GUID-7>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="PRG_TEST_TCUNIT_STEP0" Id="<GUID-7>" SpecialFunc="None">
     <Declaration><![CDATA[(* Step-0 REGRESSION campaign (all-passing when green). Sequential run
    exercises the RUN_IN_SEQUENCE completion latch: against TcUnit 2026.4.9.1
    TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished never becomes TRUE
@@ -358,12 +383,12 @@ END_VAR]]></Declaration>
 </TcPlcObject>
 ```
 
-`PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU` (`<GUID-7>`):
+`PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU` (`<GUID-8>`):
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
-  <POU Name="PRG_TEST_TCUNIT_STEP0_COUNTS" Id="<GUID-7>" SpecialFunc="None">
+  <POU Name="PRG_TEST_TCUNIT_STEP0_COUNTS" Id="<GUID-8>" SpecialFunc="None">
     <Declaration><![CDATA[(* Step-0 COUNTS campaign: xUnit count-semantics fixture. GREEN means exactly
    one failed test whose identity is Test_IntentionalFail (script-asserted),
    never zero failures. Kept separate from the all-passing REGRESSION campaign
@@ -380,12 +405,12 @@ END_VAR]]></Declaration>
 </TcPlcObject>
 ```
 
-`PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU` (`<GUID-8>`):
+`PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU` (`<GUID-9>`):
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
-  <POU Name="PRG_TEST_TCUNIT_STEP0_EDGE" Id="<GUID-8>" SpecialFunc="None">
+  <POU Name="PRG_TEST_TCUNIT_STEP0_EDGE" Id="<GUID-9>" SpecialFunc="None">
     <Declaration><![CDATA[(* Step-0 EDGE campaign (green-only): empty first suite, one passing suite,
    empty final suite. Exercises sequential-cursor traversal over suites that
    finish without executing, including the duration-call path that in
@@ -404,12 +429,35 @@ END_VAR]]></Declaration>
 </TcPlcObject>
 ```
 
+`PRG_TEST_TCUNIT_STEP0_ABORT.TcPOU` (`<GUID-10>`):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="PRG_TEST_TCUNIT_STEP0_ABORT" Id="<GUID-10>" SpecialFunc="None">
+    <Declaration><![CDATA[(* Step-0 ABORT campaign (green-only): a single suite whose only test waits on
+   a 5-minute condition timeout. Procedure: verify AllTestSuitesFinished = FALSE
+   and the run in progress, then online-write
+   TcUnit.GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := TRUE and observe the
+   latch plus the 'TEST RUN ABORTED' trace. The run cannot complete on its own
+   during the session, so the abort timing is never a race. *)
+PROGRAM PRG_TEST_TCUNIT_STEP0_ABORT
+VAR
+    AbortSuite : FB_StepZeroAbortSuite;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TcUnit.RUN_IN_SEQUENCE();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
+```
+
 - [ ] **Step 4: Wire the plcproj**
 
 In `TwinCAT_Tests.plcproj`:
 
 1. Add `<Folder Include="TcUnitTests" />` to the Folder ItemGroup (alongside `<Folder Include="BaseTests" />`).
-2. Add six `<Compile Include>` entries to the Compile ItemGroup, each in the established format:
+2. Add ten `<Compile Include>` entries to the Compile ItemGroup (the Tasks 1-2 suites, the four fixture/edge/abort suites, and the four campaign PRGs), each in the established format:
 
 ```xml
     <Compile Include="TcUnitTests\FB_TimedSuiteGreenPathTests.TcPOU">
@@ -427,6 +475,9 @@ In `TwinCAT_Tests.plcproj`:
     <Compile Include="TcUnitTests\FB_StepZeroCounts_ShouldFail.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="TcUnitTests\FB_StepZeroAbortSuite.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="TcUnitTests\PRG_TEST_TCUNIT_STEP0.TcPOU">
       <SubType>Code</SubType>
     </Compile>
@@ -434,6 +485,9 @@ In `TwinCAT_Tests.plcproj`:
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="TcUnitTests\PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="TcUnitTests\PRG_TEST_TCUNIT_STEP0_ABORT.TcPOU">
       <SubType>Code</SubType>
     </Compile>
 ```
@@ -468,13 +522,14 @@ Notes: `TIMEBETWEENTESTSUITESEXECUTION = T#100MS` provides the nonzero-delay cov
 ```powershell
 cd C:\Users\scott\Documents\TwinCAT_Tests
 git add TwinCAT_Tests/TwinCAT_Tests/TcUnitTests TwinCAT_Tests/TwinCAT_Tests/TwinCAT_Tests.plcproj
-git commit -m "test(tcunit-step0): count fixture, edge suites, three campaign PRGs, plcproj wiring
+git commit -m "test(tcunit-step0): count fixture, edge/abort suites, four campaign PRGs, plcproj wiring
 
-- FB_StepZeroSimplePass.TcPOU / FB_StepZeroEmptySuite.TcPOU / FB_StepZeroCounts_ShouldFail.TcPOU: campaign suites
-- PRG_TEST_TCUNIT_STEP0.TcPOU: all-passing REGRESSION campaign (sequential latch + abort vehicle)
+- FB_StepZeroSimplePass.TcPOU / FB_StepZeroEmptySuite.TcPOU / FB_StepZeroCounts_ShouldFail.TcPOU / FB_StepZeroAbortSuite.TcPOU: campaign suites
+- PRG_TEST_TCUNIT_STEP0.TcPOU: all-passing REGRESSION campaign (sequential latch)
 - PRG_TEST_TCUNIT_STEP0_COUNTS.TcPOU: intentional-failure counts campaign
 - PRG_TEST_TCUNIT_STEP0_EDGE.TcPOU: empty-first/final sequential edge campaign
-- TwinCAT_Tests.plcproj: TcUnitTests folder, 8 compile entries, merged xUnit path/publish/delay params"
+- PRG_TEST_TCUNIT_STEP0_ABORT.TcPOU: deterministic 5-minute abort-window campaign
+- TwinCAT_Tests.plcproj: TcUnitTests folder, 10 compile entries, merged xUnit path/publish/delay params"
 ```
 
 ---
@@ -490,16 +545,16 @@ git commit -m "test(tcunit-step0): count fixture, edge suites, three campaign PR
 - Consumes: installed TcUnit (verifier resolves `TcUnit, *` — picks up whatever is installed).
 - Produces: the committed single-suite sequential check. TwinCAT_Tests can never exercise `NumberOfInitializedTestSuites = 1` (every compiled PRG's suites register), so N=1 runs here with the existing `PRG_TEST` excluded from build. This PRG is NOT assigned to any task by default — the existing verifier configuration is untouched.
 
-- [ ] **Step 1: Generate two fresh GUIDs** (`<GUID-9>`, `<GUID-10>`), uniqueness-checked. Then confirm the verifier POU folder layout with Glob (`TcUnit-Verifier/**/POUs/*.TcPOU`) and mirror the existing `<Compile Include>` path style found in `TcUnitVerifier.plcproj`; if POUs live at a different relative path, place the new files beside the existing PRG_TEST.
+- [ ] **Step 1: Generate two fresh GUIDs** (`<GUID-11>`, `<GUID-12>`), uniqueness-checked. Then confirm the verifier POU folder layout with Glob (`TcUnit-Verifier/**/POUs/*.TcPOU`) and mirror the existing `<Compile Include>` path style found in `TcUnitVerifier.plcproj`; if POUs live at a different relative path, place the new files beside the existing PRG_TEST.
 
 - [ ] **Step 2: Write the suite and PRG**
 
-`FB_SequentialSingleSuite.TcPOU` (`<GUID-9>`):
+`FB_SequentialSingleSuite.TcPOU` (`<GUID-11>`):
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
-  <POU Name="FB_SequentialSingleSuite" Id="<GUID-9>" SpecialFunc="None">
+  <POU Name="FB_SequentialSingleSuite" Id="<GUID-11>" SpecialFunc="None">
     <Declaration><![CDATA[// One passing test; used by PRG_TEST_SEQUENCE for the N=1 sequential check.
 FUNCTION_BLOCK FB_SequentialSingleSuite EXTENDS TcUnit.FB_TestSuite]]></Declaration>
     <Implementation>
@@ -511,12 +566,12 @@ TEST_FINISHED();]]></ST>
 </TcPlcObject>
 ```
 
-`PRG_TEST_SEQUENCE.TcPOU` (`<GUID-10>`):
+`PRG_TEST_SEQUENCE.TcPOU` (`<GUID-12>`):
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
-  <POU Name="PRG_TEST_SEQUENCE" Id="<GUID-10>" SpecialFunc="None">
+  <POU Name="PRG_TEST_SEQUENCE" Id="<GUID-12>" SpecialFunc="None">
     <Declaration><![CDATA[(* Committed single-suite RUN_IN_SEQUENCE check (precursor of the fully
    automated sequential verifier configuration; see the Phase 5 verifier plan).
    Usage: exclude PRG_TEST from build, assign PlcTask to this PRG, run, and
@@ -648,11 +703,12 @@ foreach ($name in $model.Keys) {
     }
 }
 
-# Every suite outside the campaign model must be an inactive zero-test registration
+# Campaign isolation: the xUnit file must contain EXACTLY the campaign suites.
+# Any other suite means a non-campaign PRG was compiled into the run - hard failure,
+# because hidden registered suites make counts and sequence traversal ambiguous.
+Assert-True ($suites.Count -eq $model.Count) "suite count=$($suites.Count) expected exactly $($model.Count)"
 foreach ($suite in $suites) {
-    if (-not $model.ContainsKey($suite.name)) {
-        Assert-True ([int]$suite.tests -eq 0) "non-campaign suite $($suite.name) has tests=0"
-    }
+    Assert-True ($model.ContainsKey($suite.name)) "unexpected non-campaign suite present: $($suite.name)"
 }
 
 if ($OutCanonical) {
@@ -681,31 +737,42 @@ Every xUnit claim is asserted by `Verify-StepZeroXUnit.ps1`, never by eyeball.
 
 ## Per-campaign run recipe
 
-1. Open `TwinCAT_Tests.sln` in XAE. Assign the campaign PRG to TestTask
-   (replace the currently assigned PRG_TEST_*; restore when done).
+1. Open `TwinCAT_Tests.sln` in XAE. **Isolate the campaign**: exclude from build
+   every `PRG_TEST_*` program AND every other step-0 campaign PRG except this
+   campaign's PRG (multi-select in Solution Explorer -> Properties -> Exclude
+   from build). Assign the campaign PRG to TestTask.
 2. Build (Ctrl+Shift+B) - must compile clean.
 3. Delete `C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml` if present. Record that
    it is absent.
 4. Activate configuration, restart in Run mode, log in.
-5. Wait for the ADS summary block (`| ==========TESTS FINISHED RUNNING==========`).
-6. Watch `TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished` online for 60 s
+5. **Isolation preflight**: online-read `TcUnit.GVL_TcUnit.NumberOfInitializedTestSuites`.
+   It must equal this campaign's suite count exactly (REGRESSION 2, COUNTS 2,
+   EDGE 3, ABORT 1). Mismatch = STOP: record the observed value (on the first
+   run this also settles empirically whether unassigned-PRG suites register),
+   fix the exclusions, and rerun. Do not trust any result from a run whose
+   preflight mismatched.
+6. Wait for the ADS summary block (`| ==========TESTS FINISHED RUNNING==========`).
+7. Watch `TcUnit.GVL_TcUnit.TcUnitRunner.AllTestSuitesFinished` online for 60 s
    after the summary appears; record its value.
-7. Verify the xUnit file was freshly created (creation time after step 4;
+8. Verify the xUnit file was freshly created (creation time after step 4;
    record `Get-FileHash`), then run:
    `pwsh -File C:\Users\scott\Documents\TcUnitFork\docs\verification\Verify-StepZeroXUnit.ps1 -Path C:\TwinCAT\3.1\Boot\tcunit_step0_xunit.xml -Campaign <X> -Phase <RED|GREEN> [-OutCanonical <path>]`
-8. Record script output (PASS/FAIL lines) and the observations table.
+9. Record script output (PASS/FAIL lines) and the observations table. After the
+   last run of a phase, restore all build exclusions and the original TestTask
+   assignment, and confirm with `git status` that only intended changes remain.
 
 ## Phase matrix
 
 | Phase | Campaigns | Extra checks |
 |---|---|---|
 | RED (2026.4.9.1) | REGRESSION, COUNTS | rows R1-R6 below |
-| GREEN (2026.7.17.1) | REGRESSION, COUNTS, EDGE | rows G1-G8, abort phase A1, single-suite S1 |
+| GREEN (2026.7.17.1) | REGRESSION, COUNTS, EDGE, ABORT | rows G1-G8, abort A1, single-suite S1 |
 
 ## Non-XML observations
 
 | # | Observation | Expected | Actual |
 |---|---|---|---|
+| P1 | Isolation preflight, EVERY run: NumberOfInitializedTestSuites | exactly 2/2/3/1 per campaign; first run records what unassigned-PRG registration empirically does | _pending_ |
 | R1 | REGRESSION RED: script exit code | 0 (all RED-model assertions hold) | _pending_ |
 | R2 | REGRESSION RED: AllTestSuitesFinished after summary | stays FALSE for 60 s (breadcrumb #19) | _pending_ |
 | R3 | REGRESSION RED: 'TEST RUN COMPLETED' trace | absent | _pending_ |
@@ -720,7 +787,7 @@ Every xUnit claim is asserted by `Verify-StepZeroXUnit.ps1`, never by eyeball.
 | G6 | COUNTS GREEN: ADS 'Successful tests:' line | 2 (4 total - 1 fail - 1 skip) | _pending_ |
 | G7 | EDGE GREEN: script exit code | 0; AllTestSuitesFinished TRUE | _pending_ |
 | G8 | xUnit file freshness | absent before each run; fresh creation time + new hash after | _pending_ |
-| A1 | Abort phase: rerun REGRESSION, online-write TcUnit.GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := TRUE at any point mid-run (easiest during TimedSuiteTests' first seconds, before completion) | AllTestSuitesFinished latches TRUE promptly; 'TEST RUN ABORTED' trace present; delete the xUnit file afterward | _pending_ |
+| A1 | ABORT campaign: run PRG_TEST_TCUNIT_STEP0_ABORT; first OBSERVE AllTestSuitesFinished = FALSE and the run in progress (Test_AbortWindow registered, 'TEST RUN STARTED' trace), then online-write TcUnit.GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := TRUE | precondition observations recorded; after the write, AllTestSuitesFinished latches TRUE promptly and 'TEST RUN ABORTED' trace appears; no ADS summary/xUnit export expected (results never complete); delete any xUnit file afterward | _pending_ |
 | S1 | Single-suite (TcUnit-Verifier): exclude PRG_TEST from build, assign PlcTask to PRG_TEST_SEQUENCE, run | AllTestSuitesFinished TRUE with exactly 1 registered suite; restore PRG_TEST afterward | _pending_ |
 
 ## Memory evidence (Task 10)
@@ -793,7 +860,7 @@ git commit -m "docs(step0): RED runs recorded against TcUnit 2026.4.9.1
 - Consumes: inherited `FB_TestSuite` members `Tests[]`, `GetCurrentTaskIndex` (FB instance), `TraceWithSeverity`; `GVL_TcUnit.CurrentTestNameBeingCalled`; `TwinCAT_SystemInfoVarList._TaskInfo[].CycleCount`.
 - Produces: hardened invariant — `_nActiveTimedTestIdx` is valid only when set in the CURRENT task cycle by a `TEST_TIMED*` call whose test name is still the framework's current test. New PRIVATE method `_GetActiveWaitContext : UINT` (0 = no valid context). Public API unchanged.
 
-- [ ] **Step 1: Generate one fresh GUID** for the new method (`<GUID-11>`), uniqueness-checked.
+- [ ] **Step 1: Generate one fresh GUID** for the new method (`<GUID-13>`), uniqueness-checked.
 
 - [ ] **Step 2: Add the two new VARs**
 
@@ -813,10 +880,10 @@ END_VAR
 
 - [ ] **Step 3: Add the `_GetActiveWaitContext` method**
 
-New `<Method>` element before `</POU>`, with `<GUID-11>`:
+New `<Method>` element before `</POU>`, with `<GUID-13>`:
 
 ```xml
-    <Method Name="_GetActiveWaitContext" Id="<GUID-11>">
+    <Method Name="_GetActiveWaitContext" Id="<GUID-13>">
       <Declaration><![CDATA[(* Returns the timed-test index for a wait-helper call, or 0 when the call is
    out of context. Valid context requires all three: an index was set, it was
    set in the current task cycle (TEST_TIMED* ran earlier in this scan and
@@ -1162,7 +1229,16 @@ Ask Scott to run TcUnit-Verifier_DotNet exactly as documented in `TcUnit-Verifie
 
 - [ ] **Step 2: USER ACTION — single-suite sequential check (S1)**
 
-Per the PRG_TEST_SEQUENCE header: exclude `PRG_TEST` from build, assign PlcTask to `PRG_TEST_SEQUENCE`, run, verify `AllTestSuitesFinished` = TRUE with exactly 1 registered suite, then restore `PRG_TEST`. Record S1.
+Per the PRG_TEST_SEQUENCE header: exclude `PRG_TEST` from build, assign PlcTask to `PRG_TEST_SEQUENCE`, run, verify `AllTestSuitesFinished` = TRUE with `NumberOfInitializedTestSuites` = 1 (online preflight, same rule as the campaigns), then restore `PRG_TEST` and the original task assignment. Record S1.
+
+**Cleanup gate** — the manual switch must not silently alter the verifier configuration that Step 1's "existing verifier unchanged" claim rests on. After restoring, run:
+
+```powershell
+cd C:\Users\scott\Documents\TcUnitFork
+git status --porcelain TcUnit-Verifier
+```
+
+Expected: empty (Task 4's new files are already committed). Any modification to existing verifier files is a STOP: review the diff, revert with `git checkout -- <file>` if it is leftover switch state, and re-run Step 1 if the verifier configuration was touched before its run.
 
 - [ ] **Step 3: Commit**
 
@@ -1194,7 +1270,7 @@ git commit -m "docs(step0): verifier gate passed against candidate 2026.7.17.1
 
 - [ ] **Step 2: USER ACTION — GREEN campaign runs**
 
-Per the recipe, in order: REGRESSION (`-Phase GREEN -OutCanonical ...step0-regression-canonical.xml`), COUNTS (`-OutCanonical ...step0-counts-canonical.xml`), EDGE (no golden — its value is the traversal checks), then the abort phase A1 (rerun REGRESSION, online-write `AbortRunningTestSuites := TRUE` while `Test_Ordered1_Wait` is waiting, verify latch + ABORTED trace, delete the xUnit file afterward). Record G1-G8, A1, and the after-column of the memory table (SIZEOF + build allocated size).
+Per the recipe (isolation exclusions + preflight for every run), in order: REGRESSION (`-Phase GREEN -OutCanonical ...step0-regression-canonical.xml`), COUNTS (`-OutCanonical ...step0-counts-canonical.xml`), EDGE (no golden — its value is the traversal checks), then ABORT per observation A1 (verify run-in-progress preconditions, write the abort flag, verify latch + ABORTED trace, delete any xUnit file). Record P1 for every run, G1-G8, A1, and the after-column of the memory table (SIZEOF + build allocated size). After the last run: restore all exclusions and the original TestTask assignment, then run `git status --porcelain` in TwinCAT_Tests — the only expected change is the TcUnit `<Resolution>` bump from Step 1; anything else is leftover switch state to review and revert.
 
 - [ ] **Step 3: Verify and record**
 
@@ -1228,7 +1304,7 @@ git commit -m "docs(step0): GREEN evidence recorded; canonical goldens committed
 
 - `PROJECT_STATE.md`: Phase 4 row → Done (hardened + verified 2026-07-17); strike resolved tech-debt items (`_nActiveTimedTestIdx` guard, `GetTimedTestResult` trim, missing Phase 4 validation, `RUN_IN_SEQUENCE` verifier path); update "What is Active"; current version 2026.7.17.1.
 - `EXECUTION_PLAN.md`: Phase 4a/4b → Completed Work; Phase 5 step 1 (compile/ABI spike) becomes "What to Build Next"; sequence item 1 marked done.
-- `BREADCRUMBS.md`: gotcha #19 solution updated (fixed 2026-07-17; regression = step-0 campaigns + goldens + verifier S1). New gotchas: (a) timed wait context is cycle-guarded — a bare wait in the same scan directly after an executing block remains undetectable by design; (b) every compiled PRG's suites register at PLC start — campaign counts come only from the active PRG, and the verifier script asserts non-campaign suites report zero tests; (c) root xUnit `tests` now reports the total (intentional divergence from the upstream successful-only value) and `disabled_` tests surface in the `skipped` counts.
+- `BREADCRUMBS.md`: gotcha #19 solution updated (fixed 2026-07-17; regression = step-0 campaigns + goldens + verifier S1). New gotchas: (a) timed wait context is cycle-guarded — a bare wait in the same scan directly after an executing block remains undetectable by design; (b) registration of suites in PRGs not assigned to any task must never be assumed — step-0 campaigns isolate via exclude-from-build plus an empirical `NumberOfInitializedTestSuites` preflight, and the verifier script hard-fails on unexpected suites; record what P1 empirically showed, since Phase 5's topology validation needs that answer; (c) root xUnit `tests` now reports the total (intentional divergence from the upstream successful-only value) and `disabled_` tests surface in the `skipped` counts.
 - Project `CLAUDE.md` version reference (currently says 2026.3.3.3): update to 2026.7.17.1.
 
 - [ ] **Step 2: Release commit and tag (TcUnitFork)**
