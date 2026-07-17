@@ -73,21 +73,35 @@ $preLogs = @(Get-ChildItem $plcLogsUnc -Filter 'EventLog_*.jsonl' -ErrorAction S
 # --- Step 3: build + deploy + run + collect via tpm ---
 $exitTpm = 0
 if (-not $ResultsOnly) {
+    if ($Campaign -eq 'ABORT') {
+        # ABORT must NOT use `tpm test`: its collect phase blocks for the full result
+        # timeout, which burns the abort window (review finding 2026-07-17). Deploy
+        # only, then drive the abort deterministically over ADS with a positive
+        # window signal, and restart the runtime so the trace ring flushes.
+        Write-Host "`n=== tpm deploy (ABORT) ==="
+        & $tpmExe deploy --config $tpmConfig
+        if ($LASTEXITCODE -ne 0) { Write-Host "FAIL  tpm deploy exit $LASTEXITCODE" -ForegroundColor Red; exit 1 }
+        Write-Host "`n=== A1 abort probe (pyads) ==="
+        & python (Join-Path $PSScriptRoot 'step0_abort_probe.py')
+        if ($LASTEXITCODE -ne 0) { Write-Host "FAIL  abort probe failed" -ForegroundColor Red; exit 1 }
+        Start-Sleep -Seconds 5
+        $abortLogs = @(Get-ChildItem $plcLogsUnc -Filter 'EventLog_*.jsonl' | Where-Object { $_.LastWriteTime -gt $logMark })
+        $aborted = $false; $completed = $false
+        foreach ($f in $abortLogs) {
+            $txt = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+            if ($txt -match 'TEST RUN ABORTED') { $aborted = $true }
+            if ($txt -match 'TEST RUN COMPLETED') { $completed = $true }
+        }
+        Write-Host "EventLog: ABORTED=$aborted COMPLETED=$completed (expected ABORTED=True; COMPLETED may follow the latch)"
+        if (Test-Path $xunitUnc) { Remove-Item $xunitUnc -Force; Write-Host "Deleted post-abort $xunitName." }
+        if ($aborted) { Write-Host "CAMPAIGN VERDICT: PASS (A1)"; exit 0 }
+        Write-Host "CAMPAIGN VERDICT: ABORTED trace not found in flushed logs" -ForegroundColor Red
+        exit 1
+    }
     Write-Host "`n=== tpm test ($Campaign/$Phase) ==="
     & $tpmExe test --config $tpmConfig
     $exitTpm = $LASTEXITCODE
     Write-Host "=== tpm exit code: $exitTpm (nonzero is EXPECTED when the phase model contains failing tests) ==="
-    if ($Campaign -eq 'ABORT') {
-        Write-Host @"
-
-ABORT campaign deployed and running. MANUAL steps now (deterministic 5-minute window):
-  1. In XAE online view confirm AllTestSuitesFinished = FALSE and 'TEST RUN STARTED' trace present.
-  2. Online-write TcUnit.GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := TRUE.
-  3. Expect: AllTestSuitesFinished latches TRUE promptly; 'TEST RUN ABORTED' trace appears.
-  4. Record A1; no xUnit/summary expected. Delete any $xunitName on the PLC afterward.
-"@
-        exit 0
-    }
 }
 
 # --- Step 4: fetch xUnit + verify ---
