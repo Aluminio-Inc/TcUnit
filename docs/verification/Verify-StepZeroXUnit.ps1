@@ -77,7 +77,7 @@ foreach ($name in $model.Keys) {
     if ($Phase -eq 'GREEN') {
         Assert-True ($suite.skipped -eq [string]$m.skippedNames.Count) "$name skipped=$($suite.skipped) expected $($m.skippedNames.Count)"
     }
-    $cases = @($suite.testcase)
+    $cases = @($suite.testcase | Where-Object { $null -ne $_ })
     Assert-True ($cases.Count -eq $m.tests) "$name testcase count=$($cases.Count) expected $($m.tests)"
     $actualFailing = @($cases | Where-Object { $_.status -eq 'FAIL' } | ForEach-Object { $_.name })
     $actualSkipped = @($cases | Where-Object { $_.status -eq 'SKIP' } | ForEach-Object { $_.name })

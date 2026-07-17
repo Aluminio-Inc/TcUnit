@@ -65,14 +65,14 @@ mechanism is fail-safe: if it did not isolate, the exact-suite assertion fails t
 | R4 | REGRESSION RED: out-of-context Error traces | repeated burst from ordered probe (unguarded in baseline) | **25 traces** ('...without active timed test context') across the run's EventLog rotation (1+8+9+7) |
 | R5 | COUNTS RED: script exit code | 0 | **0** — all 22 assertions passed; root tests="3", failures="1"=Test_IntentionalFail, no skipped attr; SKIP testcase carries no failure element |
 | R6 | COUNTS RED: ADS 'Successful tests:' line | 3 (skipped counted as successful: 4 total - 1 fail) | trace form captured: "TESTS FINISHED - 2 suites, **3 passed**, 1 failed" (2 real passes + 1 skipped counted as passed) |
-| G1 | REGRESSION GREEN: script exit code | 0 (zero failures anywhere) | _pending_ |
-| G2 | REGRESSION GREEN: AllTestSuitesFinished | TRUE within 60 s | _pending_ |
-| G3 | REGRESSION GREEN: 'TEST RUN COMPLETED' trace | present exactly once | _pending_ |
-| G4 | REGRESSION GREEN: out-of-context Error trace | exactly once per suite instance (one-shot) | _pending_ |
-| G5 | COUNTS GREEN: script exit code | 0 (sole failure identity = Test_IntentionalFail) | _pending_ |
-| G6 | COUNTS GREEN: ADS 'Successful tests:' line | 2 (4 total - 1 fail - 1 skip) | _pending_ |
-| G7 | EDGE GREEN: script exit code | 0; AllTestSuitesFinished TRUE | _pending_ |
-| G8 | xUnit file freshness | absent before each run; fresh creation time + new hash after | _pending_ |
+| G1 | REGRESSION GREEN: script exit code | 0 (zero failures anywhere) | **0** — 8/8 passed incl. all three former RED failures (PaddedNameLookup 1.02s, StaleContextGuard 1.02s, Ordered3_Guard 0.51s); root tests="8" failures="0" skipped="0" |
+| G2 | REGRESSION GREEN: AllTestSuitesFinished | TRUE within 60 s | latch fired — 'TEST RUN COMPLETED' present (marker equivalence) |
+| G3 | REGRESSION GREEN: 'TEST RUN COMPLETED' trace | present exactly once | **present** |
+| G4 | REGRESSION GREEN: out-of-context Error trace | exactly once per suite instance (one-shot) | **2 total** (one per suite instance) vs 25 in baseline |
+| G5 | COUNTS GREEN: script exit code | 0 (sole failure identity = Test_IntentionalFail) | **0** — root tests="4" failures="1" skipped="1"; failing set exactly [Test_IntentionalFail]; skipped set exactly [Test_Skipped] |
+| G6 | COUNTS GREEN: ADS 'Successful tests:' line | 2 (4 total - 1 fail - 1 skip) | trace form: "TESTS FINISHED - 2 suites, **2 passed**, 1 failed" (was "3 passed" in RED) |
+| G7 | EDGE GREEN: script exit code | 0; AllTestSuitesFinished TRUE | **0** (after Verify script null-filter fix for zero-testcase suites); 3-suite traversal over empty-first/final clean; COMPLETED present; no crash on the formerly-null duration path |
+| G8 | xUnit file freshness | absent before each run; fresh creation time + new hash after | deleted before each run by the runner; fresh create times 15:16:19 / 15:19:03 / 15:23:50 with distinct hashes 2837BF0B... / 7897F1C0... / E4A11DF5... |
 | A1 | ABORT campaign: run PRG_TEST_TCUNIT_STEP0_ABORT; first OBSERVE AllTestSuitesFinished = FALSE and the run in progress (Test_AbortWindow registered, 'TEST RUN STARTED' trace), then online-write TcUnit.GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := TRUE | precondition observations recorded; after the write, AllTestSuitesFinished latches TRUE promptly and 'TEST RUN ABORTED' trace appears; no ADS summary/xUnit export expected (results never complete); delete any xUnit file afterward | _pending_ |
 | S1 | Single-suite (TcUnit-Verifier): exclude PRG_TEST from build, assign PlcTask to PRG_TEST_SEQUENCE, run | AllTestSuitesFinished TRUE with NumberOfInitializedTestSuites = 1; restore PRG_TEST and task assignment afterward; verifier-repo git status clean | _pending_ |
 
@@ -99,6 +99,9 @@ differences explicitly approved and the goldens re-committed.
 |---|---|---|---|---|
 | 2026-07-17 | 2026.7.17.1 (baseline) | REGRESSION/RED | 0 | All model assertions held; 3 predicted failures with predicted mechanisms; COMPLETED trace absent (breadcrumb #19 live); 25 unguarded out-of-context traces (R4) |
 | 2026-07-17 | 2026.7.17.1 (baseline) | COUNTS/RED | 0 (xUnit model) | All model assertions held; root tests=3/failures=1/no-skipped (count bugs live); 'TEST RUN STARTED' absent from flushed logs (flush-latency artifact on 0.00s run — STARTED check downgraded to WARN in runner) |
+| 2026-07-17 | 2026.7.17.2 (candidate) | REGRESSION/GREEN | 0 | 8/8 passed; all three RED failures flipped green; completion latch fired; one-shot traces (2 vs 25); golden captured |
+| 2026-07-17 | 2026.7.17.2 (candidate) | COUNTS/GREEN | 0 | Root 4/1/1; failure identity + skipped identity exact; "2 passed" summary (skip excluded); golden captured |
+| 2026-07-17 | 2026.7.17.2 (candidate) | EDGE/GREEN | 0 | Root 1/0/0; empty-first/final traversal clean; latch fired; Verify script fixed for zero-testcase suites (@(null) artifact) |
 
 ---
 
