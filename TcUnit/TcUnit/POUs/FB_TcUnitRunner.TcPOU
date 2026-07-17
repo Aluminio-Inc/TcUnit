@@ -150,10 +150,17 @@ IF NOT AllTestSuitesFinished THEN
         END_IF
         IF GVL_TcUnit.TestSuiteAddresses[CurrentlyRunningTestSuite]^.AreAllTestsFinished() THEN
             IF CurrentlyRunningTestSuite <> GVL_TcUnit.NumberOfInitializedTestSuites THEN
-                NumberOfTestSuitesFinished := NumberOfTestSuitesFinished + 1;
+                (* Address the finished suite directly: CurrentTestSuiteBeingCalled is
+                   null until a suite has executed, e.g. when the first suite is empty *)
+                GVL_TcUnit.TestSuiteAddresses[CurrentlyRunningTestSuite]^.CalculateDuration(FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
                 CurrentlyRunningTestSuite := CurrentlyRunningTestSuite + 1;
                 TimerBetweenExecutionOfTestSuites.IN := TRUE;
-				GVL_TcUnit.CurrentTestSuiteBeingCalled^.CalculateDuration(FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter));
+            ELSE
+                (* The cursor is on the final suite and it reports finished - the whole
+                   sequence is done. NumberOfTestSuitesFinished is a method VAR (reset
+                   every call), so incremental counting can never reach the total; the
+                   completion latch below fires from this assignment. Breadcrumb #19. *)
+                NumberOfTestSuitesFinished := GVL_TcUnit.NumberOfInitializedTestSuites;
             END_IF
         ELSIF NOT TimerBetweenExecutionOfTestSuites.Q THEN
             GVL_TcUnit.CurrentTestSuiteBeingCalled := GVL_TcUnit.TestSuiteAddresses[CurrentlyRunningTestSuite];
