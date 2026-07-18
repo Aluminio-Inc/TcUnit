@@ -124,6 +124,12 @@ differences explicitly approved and the goldens re-committed.
 - Dirty-state at evidence capture: TcUnitFork — `TcUnit.library` (this candidate binary, committed at release), `TcUnit/_Config/PLC/TcUnit.xti` (XAE TmcHash churn, committed at release), `.claude/settings.local.json` (local, never committed); TwinCAT_Tests — `test-results/test-timing.jsonl` (tooling artifact)
 - Known limitation: campaign log-marker scoping is by timestamp, not a unique RunId — RunId-correlated evidence is a Phase 5 spec requirement (run epoch)
 
+### Release approvals (Scott, 2026-07-17)
+
+- **Replacement verifier gate (review R2)**: APPROVED. The .NET verifier harness is unbuildable on this machine (TcXaeShell MSBuild 15 lacks Roslyn; framework MSBuild lacks the Windows SDK COM tools). The approved operating gate is the on-target stock verifier battery deployed via tpm with ADS-read counts: 26 suites finished, 267 tests, 145 passed, 121 failed == `expectedNumberOfFailedTests` (121), 1 skipped, invariant total = passed + failed + skipped.
+- **Tag go-ahead**: APPROVED — `TcUnit-2026.7.18.1` on the release commit containing the candidate binary.
+- **Credential decision (review H1)**: APPROVED as-is — the Administrator credential in earlier script history is accepted as a disposable lab credential; no rotation. Runner now takes credentials exclusively from `STEP0_PLC_USER`/`STEP0_PLC_PASSWORD`.
+
 ---
 
 ## Appendix: Baseline repo state (Task 0, recorded 2026-07-17)
