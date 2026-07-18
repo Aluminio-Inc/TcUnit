@@ -97,7 +97,9 @@ IF NOT AllTestSuitesFinished THEN
 END_IF
 
 AllTestSuitesFinishedTrigger(CLK := AllTestSuitesFinished);
-IF AllTestSuitesFinishedTrigger.Q THEN
+(* Aborted and completed are distinct terminal outcomes: an honored abort already
+   emitted TEST RUN ABORTED, so the normal completion trace is suppressed *)
+IF AllTestSuitesFinishedTrigger.Q AND NOT AbortRunningTestSuites THEN
     TraceWithSeverity(
         Message := CONCAT('TEST RUN COMPLETED - ',
                    CONCAT(UINT_TO_STRING(GVL_TcUnit.NumberOfInitializedTestSuites), ' suite(s) finished')),
@@ -196,7 +198,9 @@ IF NOT AllTestSuitesFinished THEN
 END_IF
 
 AllTestSuitesFinishedTrigger(CLK := AllTestSuitesFinished);
-IF AllTestSuitesFinishedTrigger.Q THEN
+(* Aborted and completed are distinct terminal outcomes: an honored abort already
+   emitted TEST RUN ABORTED, so the normal completion trace is suppressed *)
+IF AllTestSuitesFinishedTrigger.Q AND NOT AbortRunningTestSuites THEN
     TraceWithSeverity(
         Message := CONCAT('TEST RUN COMPLETED - ',
                    CONCAT(UINT_TO_STRING(GVL_TcUnit.NumberOfInitializedTestSuites), ' suite(s) finished')),

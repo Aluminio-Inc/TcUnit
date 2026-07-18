@@ -109,9 +109,9 @@ IF PublishTrigger.Q THEN
     // <?xml version="1.0" encoding="UTF-8"?>
     Xml.WriteDocumentHeader(Header := '<?xml version="1.0" encoding="UTF-8"?>');
 
-    // <testsuites>
+    // <testsuites>  ('disabled' removed 2026-07-18: an empty string breaks JUnit
+    //  parsers expecting an integer; skipped counts carry the information)
     Xml.NewTag('testsuites');
-    Xml.NewParameter('disabled', '');
     Xml.NewParameter('failures', UDINT_TO_STRING(UnitTestResults.NumberOfFailedTestCases));
     (* 'tests' is the TOTAL testcase count; the previous successful-only value was a bug *)
     Xml.NewParameter('tests', UDINT_TO_STRING(UnitTestResults.NumberOfTestCases));
@@ -143,15 +143,21 @@ IF PublishTrigger.Q THEN
                 Xml.NewParameter('status', TEST_STATUS_PASS);
             END_IF
 
-            // Determine testcase fail or success
+            // Determine testcase fail, skip, or success
             IF UnitTestResults.TestSuiteResults[CurrentSuiteNumber].TestCaseResults[CurrentTestCount].FailureType <> E_AssertionType.Type_UNDEFINED THEN
-                (* In case of fail 
+                (* In case of fail
                     <failure message="Values differ" type="BYTE" />
                 *)
                 Xml.NewTag('failure');
                 Xml.NewParameter('message', UnitTestResults.TestSuiteResults[CurrentSuiteNumber].TestCaseResults[CurrentTestCount].FailureMessage);
-                Xml.NewParameter('type', F_AssertionTypeToString(UnitTestResults.TestSuiteResults[CurrentSuiteNumber].TestCaseResults[CurrentTestCount].FailureType));       
+                Xml.NewParameter('type', F_AssertionTypeToString(UnitTestResults.TestSuiteResults[CurrentSuiteNumber].TestCaseResults[CurrentTestCount].FailureType));
                 // Close failure tag
+                Xml.CloseTag();
+            ELSIF UnitTestResults.TestSuiteResults[CurrentSuiteNumber].TestCaseResults[CurrentTestCount].TestIsSkipped THEN
+                (* JUnit consumers recognize a skipped testcase through a <skipped/>
+                   child element, not a custom status attribute (kept for
+                   backward compatibility) *)
+                Xml.NewTag('skipped');
                 Xml.CloseTag();
             ELSE
             // In case of success

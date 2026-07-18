@@ -182,6 +182,9 @@ IF (GVL_TcUnit.NumberOfInitializedTestSuites = 0 OR PrintingTestSuiteResultNumbe
                                         MsgFmtStr := '| Failed tests: %s',
                                         StrArg := UDINT_TO_STRING(TcUnitTestResults.NumberOfFailedTestCases));
     GVL_TcUnit.AdsMessageQueue.WriteLog(MsgCtrlMask := ADSLOG_MSGTYPE_ERROR,
+                                        MsgFmtStr := '| Skipped tests: %s',
+                                        StrArg := UDINT_TO_STRING(TcUnitTestResults.NumberOfSkippedTestCases));
+    GVL_TcUnit.AdsMessageQueue.WriteLog(MsgCtrlMask := ADSLOG_MSGTYPE_ERROR,
                                         MsgFmtStr := '| Duration: %s',
                                         StrArg := LREAL_TO_STRING(TcUnitTestResults.Duration));                                        
     GVL_TcUnit.AdsMessageQueue.WriteLog(MsgCtrlMask := ADSLOG_MSGTYPE_ERROR,
@@ -192,9 +195,13 @@ IF (GVL_TcUnit.NumberOfInitializedTestSuites = 0 OR PrintingTestSuiteResultNumbe
         Message := CONCAT('TESTS FINISHED - ',
                    CONCAT(UINT_TO_STRING(TcUnitTestResults.NumberOfTestSuites),
                    CONCAT(' suites, ',
+                   CONCAT(UDINT_TO_STRING(TcUnitTestResults.NumberOfTestCases),
+                   CONCAT(' tests, ',
                    CONCAT(UDINT_TO_STRING(TcUnitTestResults.NumberOfSuccessfulTestCases),
                    CONCAT(' passed, ',
-                   CONCAT(UDINT_TO_STRING(TcUnitTestResults.NumberOfFailedTestCases), ' failed')))))),
+                   CONCAT(UDINT_TO_STRING(TcUnitTestResults.NumberOfFailedTestCases),
+                   CONCAT(' failed, ',
+                   CONCAT(UDINT_TO_STRING(TcUnitTestResults.NumberOfSkippedTestCases), ' skipped')))))))))),
         Severity := Global.TcEventSeverity.Info);
 
     // Flush JSON event log so ToolPackageManager can read results immediately
