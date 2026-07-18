@@ -1,9 +1,126 @@
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<TcSmItem xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.beckhoff.com/schemas/2012/07/TcSmItem" TcSmVersion="1.0" TcVersion="3.1.4022.30" ClassName="CNestedPlcProjDef">
+<?xml version="1.0"?>
+<TcSmItem xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.beckhoff.com/schemas/2012/07/TcSmProject" TcSmVersion="1.0" TcVersion="3.1.4026.21" ClassName="CNestedPlcProjDef">
+	<DataTypes>
+		<DataType>
+			<Name GUID="{18071995-0000-0000-0000-000000000041}" TcBaseType="true" HideSubItems="true" CName="AmsNetId">AMSNETID</Name>
+			<BitSize>48</BitSize>
+			<BaseType GUID="{18071995-0000-0000-0000-000000000001}">BYTE</BaseType>
+			<ArrayInfo>
+				<LBound>0</LBound>
+				<Elements>6</Elements>
+			</ArrayInfo>
+			<Format>
+				<Printf>%d.%d.%d.%d.%d.%d</Printf>
+				<Parameter>[0]</Parameter>
+				<Parameter>[1]</Parameter>
+				<Parameter>[2]</Parameter>
+				<Parameter>[3]</Parameter>
+				<Parameter>[4]</Parameter>
+				<Parameter>[5]</Parameter>
+			</Format>
+		</DataType>
+		<DataType>
+			<Name GUID="{2BFA7360-4398-EDF3-FC69-8CE2A6404C96}" Namespace="TcUnit.Base" AutoDeleteType="true">ST_EtherCATAdsAddr</Name>
+			<Comment><![CDATA[Complete ADS address to access the slave (mailbox)]]></Comment>
+			<BitSize>64</BitSize>
+			<SubItem>
+				<Name>netId</Name>
+				<Type GUID="{18071995-0000-0000-0000-000000000041}">AMSNETID</Type>
+				<BitSize>48</BitSize>
+				<BitOffs>0</BitOffs>
+				<Properties>
+					<Property>
+						<Name>TcDataArea</Name>
+						<Value>Input</Value>
+					</Property>
+				</Properties>
+			</SubItem>
+			<SubItem>
+				<Name>port</Name>
+				<Type GUID="{18071995-0000-0000-0000-000000000004}">WORD</Type>
+				<BitSize>16</BitSize>
+				<BitOffs>48</BitOffs>
+				<Properties>
+					<Property>
+						<Name>TcDataArea</Name>
+						<Value>Input</Value>
+					</Property>
+				</Properties>
+			</SubItem>
+		</DataType>
+	</DataTypes>
 	<Project GUID="{59ED27DD-D865-40E3-AB9D-3C7E47AFCF7D}" Name="TcUnitVerifier" PrjFilePath="..\..\TcUnitVerifier\TcUnitVerifier.plcproj" TmcFilePath="..\..\TcUnitVerifier\TcUnitVerifier.tmc" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true">
-		<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2">
+		<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcHash="{EA8AEF58-2A84-CFCC-F10E-7291A5B380CF}" TmcPath="TcUnitVerifier\TcUnitVerifier.tmc">
 			<Name>TcUnitVerifier Instance</Name>
 			<CLSID ClassFactory="TcPlc30">{08500001-0000-0000-F000-000000000064}</CLSID>
+			<Vars VarGrpType="1">
+				<Name>PlcTask Inputs</Name>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerCsv.ComponentStatus.EtherCATStatus.WcState.WcState</Name>
+					<Type>BIT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerCsv.ComponentStatus.EtherCATStatus.WcState.InputToggle</Name>
+					<Type>BIT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerCsv.ComponentStatus.EtherCATStatus.InfoData.State</Name>
+					<Comment><![CDATA[ Same Size as Control.ST_EtherCATState Can use MEMCPY into structure]]></Comment>
+					<Type>UINT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerCsv.ComponentStatus.EtherCATStatus.InfoData.AdsAddr</Name>
+					<Type GUID="{2BFA7360-4398-EDF3-FC69-8CE2A6404C96}" Namespace="TcUnit.Base">ST_EtherCATAdsAddr</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerJson.ComponentStatus.EtherCATStatus.WcState.WcState</Name>
+					<Type>BIT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerJson.ComponentStatus.EtherCATStatus.WcState.InputToggle</Name>
+					<Type>BIT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerJson.ComponentStatus.EtherCATStatus.InfoData.State</Name>
+					<Comment><![CDATA[ Same Size as Control.ST_EtherCATState Can use MEMCPY into structure]]></Comment>
+					<Type>UINT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerJson.ComponentStatus.EtherCATStatus.InfoData.AdsAddr</Name>
+					<Type GUID="{2BFA7360-4398-EDF3-FC69-8CE2A6404C96}" Namespace="TcUnit.Base">ST_EtherCATAdsAddr</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerXml.ComponentStatus.EtherCATStatus.WcState.WcState</Name>
+					<Type>BIT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerXml.ComponentStatus.EtherCATStatus.WcState.InputToggle</Name>
+					<Type>BIT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerXml.ComponentStatus.EtherCATStatus.InfoData.State</Name>
+					<Comment><![CDATA[ Same Size as Control.ST_EtherCATState Can use MEMCPY into structure]]></Comment>
+					<Type>UINT</Type>
+				</Var>
+				<Var>
+					<Name>TcUnit.Base#GVL_System.FileHandlerXml.ComponentStatus.EtherCATStatus.InfoData.AdsAddr</Name>
+					<Type GUID="{2BFA7360-4398-EDF3-FC69-8CE2A6404C96}" Namespace="TcUnit.Base">ST_EtherCATAdsAddr</Type>
+				</Var>
+			</Vars>
+			<Contexts>
+				<Context>
+					<Id>0</Id>
+					<Name>PlcTask</Name>
+					<ManualConfig>
+						<OTCID>#x02010030</OTCID>
+					</ManualConfig>
+					<Priority>20</Priority>
+					<CycleTime>10000000</CycleTime>
+				</Context>
+			</Contexts>
+			<TaskPouOids>
+				<TaskPouOid Prio="20" OTCID="#x08502001"/>
+			</TaskPouOids>
 		</Instance>
 	</Project>
 </TcSmItem>
