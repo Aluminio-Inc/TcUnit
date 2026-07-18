@@ -80,7 +80,8 @@ _Nothing blocked._
 - ~~`RUN_IN_SEQUENCE()` has no active committed verifier path~~ **Resolved 2026-07-18** (fix + REGRESSION campaign completion assertion + verifier `PRG_TEST_SEQUENCE` single-suite check)
 - The .NET verifier harness cannot build on this machine (needs full VS/MSBuild with Windows SDK COM tools); the on-target battery + ADS count comparison is the operating verifier gate
 - Campaign evidence is timestamp-scoped, not RunId-correlated — superseded by the Phase 5 run-epoch design
-- Raylase ADS suite hardening (review M2-M4: real Ack/sequence lifecycle, readiness boundary cases, ADS-visible diagnostics) is tracked in TwinCAT_Tests, owner Scott
+- ~~Raylase ADS suite hardening (review M2-M4)~~ **Resolved 2026-07-18** — red-green on hardware in TwinCAT_Tests (real Ack/sequence lifecycle + stale-Ack/Error negatives; exact-deadline/readiness/armed/reset/rollover oracles; pyads BridgeHealth contract checker). Evidence: TwinCAT_Tests `docs/TEST_RUN_2026-07-16_RAYLASE_ADS.md`
+- tpm trace-json result collection has proven blind spots (rotation-race tail loss; 10 slowest suite-1 results never collected) — authoritative verdicts come from `TwinCAT_Tests/docs/read_tcunit_results.py` (ADS read of `GVL_TcUnit.TcUnitRunner.TestResults`); consider fixing the tpm collector or switching it to the ADS reader
 - Multi-task production execution is gated on a TwinCATBase ring-buffer multi-writer/one-reader safety audit and stress test
 - The current fixed `ST_TestSuiteResults` snapshot is too large to replicate per task; Phase 5 must use the memory-safe reporting architecture in ADR-005
 
