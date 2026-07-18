@@ -56,6 +56,13 @@ foreach ($prg in $prgNames) {
     if ($prg -ne $c.Prg) { $inner = $inner -replace '(<SubType>Code</SubType>)', "`$1`r`n      <ExcludeFromBuild>true</ExcludeFromBuild>" }
     $proj = $proj.Remove($m.Index, $m.Length).Insert($m.Index, $m.Groups[1].Value + $inner + $m.Groups[3].Value)
 }
+if ($Campaign -eq 'ABORT') {
+    # Aborted runs never reach the TESTS FINISHED flush trigger, so for this campaign
+    # flush every entry immediately: the jsonl then carries TEST RUN ABORTED
+    # deterministically. Transient selection state; -Restore/git reverts it.
+    $proj = [regex]::Replace($proj, '(<Key>SAVEENTRYTHRESHOLD</Key>\s*<Value>)\d+(</Value>)', '${1}1${2}')
+    Write-Host "ABORT selection: SAVEENTRYTHRESHOLD forced to 1 (immediate flush)."
+}
 Set-Content -Path $plcproj -Value $proj -NoNewline -Encoding UTF8
 try { [xml](Get-Content $plcproj -Raw) | Out-Null } catch { Write-Host "FAIL  plcproj XML broken after edit: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
 Write-Host "Selected campaign $Campaign ($($c.Prg)) on TestTask1; all other test PRGs excluded from build."
@@ -79,20 +86,21 @@ if (-not $ResultsOnly) {
         # only, then drive the abort deterministically over ADS with a positive
         # window signal, and restart the runtime so the trace ring flushes.
         Write-Host "`n=== tpm deploy (ABORT) ==="
-        & $tpmExe deploy --config $tpmConfig
+        & $tpmExe deploy (Join-Path $twcTests 'TwinCAT_Tests\TwinCAT_Tests.sln') --target '192.168.225.2.1.1'
         if ($LASTEXITCODE -ne 0) { Write-Host "FAIL  tpm deploy exit $LASTEXITCODE" -ForegroundColor Red; exit 1 }
-        Write-Host "`n=== A1 abort probe (pyads) ==="
+        Write-Host "`n=== A1 abort probe (pyads: window signal, flag write, latch) ==="
         & python (Join-Path $PSScriptRoot 'step0_abort_probe.py')
-        if ($LASTEXITCODE -ne 0) { Write-Host "FAIL  abort probe failed" -ForegroundColor Red; exit 1 }
-        Start-Sleep -Seconds 5
-        $abortLogs = @(Get-ChildItem $plcLogsUnc -Filter 'EventLog_*.jsonl' | Where-Object { $_.LastWriteTime -gt $logMark })
-        $aborted = $false; $completed = $false
-        foreach ($f in $abortLogs) {
+        $probeExit = $LASTEXITCODE
+        if ($probeExit -ne 0) { Write-Host "CAMPAIGN VERDICT: abort probe failed" -ForegroundColor Red; exit 1 }
+        Write-Host "checking flushed logs for TEST RUN ABORTED (SAVEENTRYTHRESHOLD=1 flushes per entry)..."
+        Start-Sleep -Seconds 8
+        $aborted = $false; $started = $false
+        foreach ($f in @(Get-ChildItem $plcLogsUnc -Filter 'EventLog_*.jsonl' | Where-Object { $_.LastWriteTime -gt $logMark })) {
             $txt = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
             if ($txt -match 'TEST RUN ABORTED') { $aborted = $true }
-            if ($txt -match 'TEST RUN COMPLETED') { $completed = $true }
+            if ($txt -match 'TEST RUN STARTED') { $started = $true }
         }
-        Write-Host "EventLog: ABORTED=$aborted COMPLETED=$completed (expected ABORTED=True; COMPLETED may follow the latch)"
+        Write-Host "flushed markers: STARTED=$started ABORTED=$aborted"
         if (Test-Path $xunitUnc) { Remove-Item $xunitUnc -Force; Write-Host "Deleted post-abort $xunitName." }
         if ($aborted) { Write-Host "CAMPAIGN VERDICT: PASS (A1)"; exit 0 }
         Write-Host "CAMPAIGN VERDICT: ABORTED trace not found in flushed logs" -ForegroundColor Red

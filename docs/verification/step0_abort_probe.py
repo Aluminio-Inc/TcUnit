@@ -23,7 +23,8 @@ import pyads
 
 AMS = "192.168.225.2.1.1"
 PORT = 851
-PREFIX = "TcUnit.GVL_TcUnit."
+# Runtime symbol paths carry no library namespace: globals surface as GVL.<var>
+PREFIX = "GVL_TcUnit."
 
 SYM_SUITES = PREFIX + "NumberOfInitializedTestSuites"
 SYM_CURRENT = PREFIX + "CurrentTestNameBeingCalled"
@@ -40,7 +41,17 @@ def main() -> None:
     plc = pyads.Connection(AMS, PORT)
     plc.open()
     try:
-        suites = plc.read_by_name(SYM_SUITES, pyads.PLCTYPE_UINT)
+        # Right after a deploy the runtime is up before its symbol server is ready;
+        # retry first contact for up to 30 s (observed ADS error 1808 otherwise).
+        deadline = time.monotonic() + 30.0
+        while True:
+            try:
+                suites = plc.read_by_name(SYM_SUITES, pyads.PLCTYPE_UINT)
+                break
+            except pyads.ADSError as exc:
+                if time.monotonic() >= deadline:
+                    fail(f"symbol server not ready within 30 s: {exc}")
+                time.sleep(1.0)
         print(f"precondition: NumberOfInitializedTestSuites={suites}")
         if suites != 1:
             fail(f"expected exactly 1 registered suite, got {suites} (isolation broken)")
@@ -78,12 +89,10 @@ def main() -> None:
             fail("AllTestSuitesFinished did not latch within 10 s of the abort write")
         print("postcondition: AllTestSuitesFinished=True (abort honored)")
 
-        print("restarting PLC runtime (STOP -> RUN) to flush the trace ring via FB_exit drain...")
-        plc.write_control(pyads.ADSSTATE_STOP, 0, b"")
-        time.sleep(3.0)
-        plc.write_control(pyads.ADSSTATE_RUN, 0, b"")
-        time.sleep(2.0)
-        print("runtime restarted")
+        # Trace-content evidence is asserted by the campaign runner from the
+        # flushed jsonl (the ABORT selection forces SAVEENTRYTHRESHOLD=1 so
+        # every entry flushes immediately). The ring itself drains within one
+        # LogTask scan and clears its slots - not race-readable post-hoc.
     finally:
         plc.close()
 

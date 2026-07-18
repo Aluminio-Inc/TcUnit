@@ -73,16 +73,16 @@ mechanism is fail-safe: if it did not isolate, the exact-suite assertion fails t
 | G6 | COUNTS GREEN: ADS 'Successful tests:' line | 2 (4 total - 1 fail - 1 skip) | trace form: "TESTS FINISHED - 2 suites, **2 passed**, 1 failed" (was "3 passed" in RED) |
 | G7 | EDGE GREEN: script exit code | 0; AllTestSuitesFinished TRUE | **0** (after Verify script null-filter fix for zero-testcase suites); 3-suite traversal over empty-first/final clean; COMPLETED present; no crash on the formerly-null duration path |
 | G8 | xUnit file freshness | absent before each run; fresh creation time + new hash after | deleted before each run by the runner; fresh create times 15:16:19 / 15:19:03 / 15:23:50 with distinct hashes 2837BF0B... / 7897F1C0... / E4A11DF5... |
-| A1 | ABORT campaign: run PRG_TEST_TCUNIT_STEP0_ABORT; first OBSERVE AllTestSuitesFinished = FALSE and the run in progress (Test_AbortWindow registered, 'TEST RUN STARTED' trace), then online-write TcUnit.GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := TRUE | precondition observations recorded; after the write, AllTestSuitesFinished latches TRUE promptly and 'TEST RUN ABORTED' trace appears; no ADS summary/xUnit export expected (results never complete); delete any xUnit file afterward | _pending_ |
+| A1 | ABORT campaign (automated: `Run-StepZeroCampaign.ps1 -Campaign ABORT` = tpm deploy + pyads probe) | positive window signal (CurrentTestNameBeingCalled = Test_AbortWindow) + settle before the raw flag write; latch promptly; 'TEST RUN ABORTED' in flushed logs | **PASS** (candidate .3, 2026-07-17): preflight suites=1; window signal observed; 5 s settle; raw write honored, latch within 10 s; **'TEST RUN ABORTED' present in flushed jsonl** (observed-abort trace added in .3 — a raw flag write previously emitted nothing, review finding). Notes: aborted runs never reach the normal flush trigger, so the ABORT selection forces SAVEENTRYTHRESHOLD=1; 'TEST RUN STARTED' is dropped at scan 1 before the trace pipeline is ready (pre-existing Base behavior, not a Step-0 defect) |
 | S1 | Single-suite (TcUnit-Verifier): exclude PRG_TEST from build, assign PlcTask to PRG_TEST_SEQUENCE, run | AllTestSuitesFinished TRUE with NumberOfInitializedTestSuites = 1; restore PRG_TEST and task assignment afterward; verifier-repo git status clean | _pending_ |
 
 ## Memory evidence (Task 10)
 
 | Measurement | Before (baseline 2026.7.17.1) | After (candidate) | Delta |
 |---|---|---|---|
-| SIZEOF(ST_TestSuiteResult) | _pending_ | _pending_ | expected +2 bytes (+padding) |
-| SIZEOF(ST_TestSuiteResults) | _pending_ | _pending_ | expected ~ +2 KB (1000 x 2 bytes + aggregate UDINT widening + padding) |
-| TwinCAT_Tests build: allocated data size | _pending_ | _pending_ | record from build output |
+| SIZEOF(ST_TestSuiteResult) | 78,672 B (analytic: new UINT consumed existing pad before the 8-aligned LREAL — 256+2+2+2 = 262, pad 2 → 264 becomes 256+2+2+2+2 = 264, pad 0) | **78,672 B** (TMC: 629,376 bits) | **0** |
+| SIZEOF(ST_TestSuiteResults) | 78,672,016 B (analytic: header 2+2+2+2 = 8, LREAL at 8 → array at 16) | **78,672,032 B** (TMC: 629,376,256 bits; header 2+pad2+4+4+4+4 = 20, pad 4, LREAL at 24 → array at 32) | **+16 B total** — UDINT widening + skipped fields cost 16 bytes, no per-suite growth |
+| TwinCAT_Tests build: allocated data size | n/a | n/a | superseded by exact TMC struct sizes above (compiler-generated evidence per review finding 3) |
 
 ## Golden
 
@@ -102,6 +102,10 @@ differences explicitly approved and the goldens re-committed.
 | 2026-07-17 | 2026.7.17.2 (candidate) | REGRESSION/GREEN | 0 | 8/8 passed; all three RED failures flipped green; completion latch fired; one-shot traces (2 vs 25); golden captured |
 | 2026-07-17 | 2026.7.17.2 (candidate) | COUNTS/GREEN | 0 | Root 4/1/1; failure identity + skipped identity exact; "2 passed" summary (skip excluded); golden captured |
 | 2026-07-17 | 2026.7.17.2 (candidate) | EDGE/GREEN | 0 | Root 1/0/0; empty-first/final traversal clean; latch fired; Verify script fixed for zero-testcase suites (@(null) artifact) |
+| 2026-07-17 | 2026.7.17.3 (candidate) | REGRESSION/GREEN | 0 | Rerun after observed-abort trace fix; canonical golden byte-identical to the .2 golden |
+| 2026-07-17 | 2026.7.17.3 (candidate) | COUNTS/GREEN | 0 | Rerun; golden byte-identical |
+| 2026-07-17 | 2026.7.17.3 (candidate) | EDGE/GREEN | 0 | Rerun; all assertions pass |
+| 2026-07-17 | 2026.7.17.3 (candidate) | ABORT/GREEN (A1) | 0 | Automated probe: window signal, settle, raw flag write, latch, 'TEST RUN ABORTED' in flushed jsonl |
 
 ---
 
