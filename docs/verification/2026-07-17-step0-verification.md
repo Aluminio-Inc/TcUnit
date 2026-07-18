@@ -74,7 +74,8 @@ mechanism is fail-safe: if it did not isolate, the exact-suite assertion fails t
 | G7 | EDGE GREEN: script exit code | 0; AllTestSuitesFinished TRUE | **0** (after Verify script null-filter fix for zero-testcase suites); 3-suite traversal over empty-first/final clean; COMPLETED present; no crash on the formerly-null duration path |
 | G8 | xUnit file freshness | absent before each run; fresh creation time + new hash after | deleted before each run by the runner; fresh create times 15:16:19 / 15:19:03 / 15:23:50 with distinct hashes 2837BF0B... / 7897F1C0... / E4A11DF5... |
 | A1 | ABORT campaign (automated: `Run-StepZeroCampaign.ps1 -Campaign ABORT` = tpm deploy + pyads probe) | positive window signal (CurrentTestNameBeingCalled = Test_AbortWindow) + settle before the raw flag write; latch promptly; 'TEST RUN ABORTED' in flushed logs | **PASS** (candidate .3, 2026-07-17): preflight suites=1; window signal observed; 5 s settle; raw write honored, latch within 10 s; **'TEST RUN ABORTED' present in flushed jsonl** (observed-abort trace added in .3 — a raw flag write previously emitted nothing, review finding). Notes: aborted runs never reach the normal flush trigger, so the ABORT selection forces SAVEENTRYTHRESHOLD=1; 'TEST RUN STARTED' is dropped at scan 1 before the trace pipeline is ready (pre-existing Base behavior, not a Step-0 defect) |
-| S1 | Single-suite (TcUnit-Verifier): exclude PRG_TEST from build, assign PlcTask to PRG_TEST_SEQUENCE, run | AllTestSuitesFinished TRUE with NumberOfInitializedTestSuites = 1; restore PRG_TEST and task assignment afterward; verifier-repo git status clean | _pending_ |
+| S1 | Single-suite (TcUnit-Verifier): exclude PRG_TEST from build, assign PlcTask to PRG_TEST_SEQUENCE, run | AllTestSuitesFinished TRUE with NumberOfInitializedTestSuites = 1; restore PRG_TEST and task assignment afterward; verifier-repo git status clean | **PASS** (2026-07-17, headless: transient selection surgery + tpm deploy + pyads): NumberOfInitializedTestSuites=1, AllTestSuitesFinished=True; selection restored; verifier tree clean |
+| V1 | Verifier gate (replacement for the unbuildable .NET harness — see below) | full stock verifier battery deployed via tpm; aggregate failed count read over ADS equals the harness expectation constant (121) | **PASS on candidates .3 and .18.1**: 26 suites, 267 tests, 145 passed / **121 failed** / 1 skipped; invariant total=passed+failed+skipped holds across the whole upstream corpus. The .NET harness itself cannot build on this machine (TcXaeShell MSBuild 15 lacks its Roslyn payload; framework MSBuild lacks the Windows SDK COM-interop tools for the TCatSysManagerLib reference) — replacement gate documented per plan Task 11 fallback; **explicit approval of the replacement gate is a release precondition** |
 
 ## Memory evidence (Task 10)
 
@@ -106,6 +107,22 @@ differences explicitly approved and the goldens re-committed.
 | 2026-07-17 | 2026.7.17.3 (candidate) | COUNTS/GREEN | 0 | Rerun; golden byte-identical |
 | 2026-07-17 | 2026.7.17.3 (candidate) | EDGE/GREEN | 0 | Rerun; all assertions pass |
 | 2026-07-17 | 2026.7.17.3 (candidate) | ABORT/GREEN (A1) | 0 | Automated probe: window signal, settle, raw flag write, latch, 'TEST RUN ABORTED' in flushed jsonl |
+| 2026-07-17 | 2026.7.17.3 (candidate) | Verifier battery (V1) | n/a | 26 suites / 267 tests / failed=121 == harness constant; invariant holds |
+| 2026-07-18 | 2026.7.18.1 (release candidate) | REGRESSION/GREEN | 0 | 8/8; goldens re-baselined via explicit -UpdateGolden (intentional: no disabled attr, skipped-element support, M1 block reorder); transactional selection restore proven clean |
+| 2026-07-18 | 2026.7.18.1 (release candidate) | COUNTS/GREEN | 0 | 4/1/1; Test_Skipped carries <skipped/> element, non-skipped testcases carry none, root has no disabled attribute (H2) |
+| 2026-07-18 | 2026.7.18.1 (release candidate) | EDGE/GREEN | 0 | All assertions pass |
+| 2026-07-18 | 2026.7.18.1 (release candidate) | ABORT/GREEN (A1+R3) | 0 | ABORTED=True, COMPLETED=False, SUMMARY=False, XUNIT=False — aborted and completed are distinct terminal outcomes |
+| 2026-07-18 | 2026.7.18.1 (release candidate) | Verifier battery (V1) | n/a | failed=121 == harness constant; invariant holds; deployed with the stock 4024.59 tsproj pin untouched (headless open auto-resolves — the transient pin swap was unnecessary) |
+
+## Release evidence (review M5)
+
+- TcUnitFork source commit under test: `6613090a5a49d5c5ed1b67ee10cc5fcbd95e7d1a` (branch `feat/timed-test-suite`; release doc/evidence commits follow it)
+- TwinCAT_Tests consumer commit: `ca7a7b950e0b8681296f6228ba06195e6bc8d604` (branch `feat/tcunit-step0`, neutral configuration with TcUnit resolution 2026.7.18.1)
+- Candidate `TcUnit.library` (2026.7.18.1): SHA-256 `D29A06B88B3D4129EFE4DE9543FD4FBAEF1EC9D0D6B3EF2BB8CD959F650A0F10`, 553,758 bytes
+- Toolchain: tpm CLI `1.0.0+fb99c438b2b1a6008751e921b5f35938fab2cd7a`; TcXaeShell.DTE.17.0; TwinCAT.Standard.XAE 4026.21.2; pyads 3.5.2
+- Target: `192.168.225.2.1.1` (CX-PLC), PLC runtime port 851
+- Dirty-state at evidence capture: TcUnitFork — `TcUnit.library` (this candidate binary, committed at release), `TcUnit/_Config/PLC/TcUnit.xti` (XAE TmcHash churn, committed at release), `.claude/settings.local.json` (local, never committed); TwinCAT_Tests — `test-results/test-timing.jsonl` (tooling artifact)
+- Known limitation: campaign log-marker scoping is by timestamp, not a unique RunId — RunId-correlated evidence is a Phase 5 spec requirement (run epoch)
 
 ---
 

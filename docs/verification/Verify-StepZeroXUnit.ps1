@@ -2,7 +2,10 @@ param(
     [Parameter(Mandatory = $true)][string]$Path,
     [Parameter(Mandatory = $true)][ValidateSet('REGRESSION', 'COUNTS', 'EDGE')][string]$Campaign,
     [Parameter(Mandatory = $true)][ValidateSet('RED', 'GREEN')][string]$Phase,
-    [string]$OutCanonical
+    # Golden comparison is READ-ONLY by default (review H3): a regression must fail
+    # against the committed golden, never silently update it. -UpdateGolden is the
+    # explicit, deliberate replacement operation.
+    [switch]$UpdateGolden
 )
 
 $script:failCount = 0
@@ -89,14 +92,45 @@ foreach ($name in $model.Keys) {
         } else {
             Assert-True ($null -eq $case.failure) "$name/$($case.name) carries no <failure> element"
         }
+        if ($Phase -eq 'GREEN') {
+            # JUnit interop (review H2): skipped testcases carry a <skipped/> child
+            if ($case.name -in $m.skippedNames) {
+                Assert-True ($null -ne $case.SelectSingleNode('skipped')) "$name/$($case.name) carries a <skipped/> element"
+            } else {
+                Assert-True ($null -eq $case.SelectSingleNode('skipped')) "$name/$($case.name) has no <skipped/> element"
+            }
+        }
     }
 }
 
-if ($OutCanonical) {
-    $content = Get-Content -Path $Path -Raw
-    $canonical = $content -replace 'time="[^"]*"', 'time=""'
-    Set-Content -Path $OutCanonical -Value $canonical -NoNewline -Encoding UTF8
-    Write-Host "Canonical golden written to $OutCanonical"
+if ($Phase -eq 'GREEN') {
+    Assert-True (-not $root.HasAttribute('disabled')) "root has no 'disabled' attribute (removed for JUnit interop)"
+}
+
+# Golden handling (GREEN REGRESSION/COUNTS): read-only comparison by default
+if ($Phase -eq 'GREEN' -and $Campaign -in @('REGRESSION', 'COUNTS')) {
+    $goldenPath = Join-Path $PSScriptRoot "goldens\2026-07-17-step0-$($Campaign.ToLower())-canonical.xml"
+    $canonical = (Get-Content -Path $Path -Raw) -replace 'time="[^"]*"', 'time=""'
+    if ($UpdateGolden) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $goldenPath) | Out-Null
+        Set-Content -Path $goldenPath -Value $canonical -NoNewline -Encoding UTF8
+        Write-Host "GOLDEN UPDATED (explicit -UpdateGolden): $goldenPath"
+    } elseif (Test-Path $goldenPath) {
+        $golden = Get-Content -Path $goldenPath -Raw
+        if ($canonical -eq $golden) {
+            Write-Host "PASS  canonical output matches committed golden"
+        } else {
+            Write-Host "FAIL  canonical output differs from committed golden $goldenPath" -ForegroundColor Red
+            $script:failCount++
+            $cLines = $canonical -split '><'; $gLines = $golden -split '><'
+            for ($i = 0; $i -lt [Math]::Max($cLines.Count, $gLines.Count); $i++) {
+                if ($cLines[$i] -ne $gLines[$i]) { Write-Host "  first diff at element ${i}:"; Write-Host "    golden: <$($gLines[$i])>"; Write-Host "    actual: <$($cLines[$i])>"; break }
+            }
+        }
+    } else {
+        Write-Host "FAIL  no committed golden at $goldenPath (use -UpdateGolden to create it deliberately)" -ForegroundColor Red
+        $script:failCount++
+    }
 }
 
 Write-Host ""

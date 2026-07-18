@@ -9,11 +9,11 @@ Sequence (all over ADS, target 192.168.225.2.1.1:851):
      before any observable test evidence exists).
   3. Write GVL_TcUnit.TcUnitRunner.AbortRunningTestSuites := True.
   4. Postcondition: AllTestSuitesFinished latches True promptly.
-  5. Restart the PLC runtime (STOP -> RUN) so Base's FB_exit drain flushes the
-     ring buffer: aborted runs never reach the normal TESTS FINISHED flush
-     trigger, so the TEST RUN ABORTED trace would otherwise sit unflushed.
 
-Exit 0 on success; nonzero with a reason otherwise.
+Trace-content evidence (TEST RUN ABORTED present; TEST RUN COMPLETED, summary,
+and xUnit ABSENT) is asserted by the campaign runner from the flushed jsonl -
+the ABORT selection forces SAVEENTRYTHRESHOLD=1 so every entry flushes
+immediately. Exit 0 on success; nonzero with a reason otherwise.
 """
 
 import sys
