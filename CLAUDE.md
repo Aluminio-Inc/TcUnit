@@ -12,7 +12,7 @@ TcUnitFork is a Photara-specific fork of the [TcUnit](https://www.tcunit.org) xU
 
 **Compiled library**: `TcUnit.library` at repo root (binary, committed to git).
 
-**Version** (current `2026.7.17.1` — toolchain-validation baseline; contains the unfixed Step-0 defects, see BREADCRUMBS #19/#22 and the Step-0 plan): Must be updated in TWO files that stay in sync:
+**Version** (current `2026.7.18.1` — Step-0 release candidate: timed-suite hardening, sequential completion latch, corrected xUnit/JUnit count semantics, distinct abort/completed terminal outcomes; full evidence in `docs/verification/2026-07-17-step0-verification.md`): Must be updated in TWO files that stay in sync:
 1. `TcUnit/TcUnit/TcUnit.plcproj` → `<ProjectVersion>` tag
 2. `TcUnit/TcUnit/Version/Global_Version.TcGVL` → `stLibVersion_TcUnit` fields
 

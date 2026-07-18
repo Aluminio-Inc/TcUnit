@@ -22,38 +22,19 @@
 | Phase 1 | FB_BaseStatic integration into FB_TestSuite, FB_TcUnitRunner, FB_AdsAssertMessageFormatter; TraceWithSeverity across assertion failures, test lifecycle, run lifecycle | BREADCRUMBS.md |
 | Phase 2 | FB_AssertResultStatic, FB_AssertArrayResultStatic, FB_xUnitXmlPublisher, FB_AdsTestResultLogger EXTENDS FB_BaseStatic; overflow/error/completion traces; dead-code typo fix in GetDetectionCountThisCycle | BREADCRUMBS.md |
 | Phase 3 | Centralized assert failure tracing in LogAssertFailure; duration in pass/fail; suite completion summary with counts | BREADCRUMBS.md |
-
 | Phase 4 | FB_TimedTestSuite — real-time elapsed testing (TEST_TIMED, TEST_TIMED_ORDERED, WaitForTime, WaitForCondition, WaitTimedOut, GetTimedTestResult); 3 new DUTs; Type_TIMEOUT + Type_WAIT_MISUSE assertion types; SetTestFailed widened to INTERNAL | [timed-test-suite-design.md](./superpowers/specs/2026-05-20-timed-test-suite-design.md) |
+| Phase 4a/4b + Phase 5 Step 0 | Timed-suite hardening (cycle-guarded wait context, trimmed result lookup, one-shot traces); `RUN_IN_SEQUENCE` completion latch; xUnit/JUnit count semantics (UDINT aggregates, `<skipped/>` elements, no `disabled` attr); distinct ABORTED/COMPLETED terminal outcomes; committed red-green campaigns + automated abort probe + verifier single-suite check; verifier battery 121/121 on candidate; canonical goldens | [2026-07-17-phase5-step0-prerequisites.md](./superpowers/plans/2026-07-17-phase5-step0-prerequisites.md), evidence in [2026-07-17-step0-verification.md](../docs/verification/2026-07-17-step0-verification.md) — **complete 2026-07-18, candidate 2026.7.18.1, tag pending release approval** |
 
-**Current state**: 8 FBs (7 extended + 1 new), Phase 4 code landed on `feat/timed-test-suite`, and a seven-commit audit identified two immediate hardening fixes before XAE verification: active timed-context lifecycle and `GetTimedTestResult()` name normalization.
+**Current state**: Step-0 complete; the working verifier gate is the on-target battery + ADS count comparison (the .NET harness cannot build on this machine). Deferred with owners: Raylase suite hardening (review M2-M4 — TwinCAT_Tests, Scott); RunId-correlated evidence (Phase 5 run epoch); runner terminal-logic dedup (Phase 5 plan-driven runner refactor); PLC admin credential rotation decision (Scott).
 
 ---
 
 ## What to Build Next
 
-### Phase 4a: Timed Test Suite Hardening from Audit
+### Phase 5 Step 1: Compile/Memory/ABI Spike
 
-**Value**: High | **Effort**: Small | **Prerequisites**: Phase 4 code complete (branch `feat/timed-test-suite`)
-**Status**: Next up
-
-1. Fix `_nActiveTimedTestIdx` lifecycle so out-of-context wait calls cannot reuse the previous timed test's state after the final timed test method in a scan
-2. Normalize `GetTimedTestResult(TestName)` with the same trim behavior used by `TEST()`, `TEST_ORDERED()`, and `TEST_TIMED()`
-3. Re-review wait-context assumptions after the code change and update BREADCRUMBS/PROJECT_STATE if the implementation strategy changes
-
-**Acceptance**:
-- Out-of-context waits do not bind to stale timed state
-- `GetTimedTestResult(' padded name ')` resolves the same test as the registration paths
-- Repo tracking docs reflect the hardened behavior accurately
-
-### Phase 4b: Timed Test Suite Verification and Level 1 Tests
-
-**Value**: High | **Effort**: Small | **Prerequisites**: Phase 4a complete
-**Status**: After Phase 4a
-
-1. Open TcUnit.sln in XAE, build, verify clean compilation
-2. Write Level 1 green-path tests in TwinCAT_Tests: `FB_TimedSuiteGreenPathTests EXTENDS FB_TimedTestSuite` with short real-time waits (T#1S, T#2S)
-3. Recompile TcUnit as library, bump version, install, update consumer plcproj references
-4. Optionally: write Level 2 verifier suite (local-only, red run expected — see spec for mechanism)
+**Value**: High | **Effort**: Medium | **Prerequisites**: Step 0 complete (done 2026-07-18)
+**Status**: Next up — see the Phase 5 section below and the design spec Level 1 list (RUN signature strategy, task-context arrays, critical-section primitive, rename/replace behavior, FB_reinit, exact memory)
 
 ### Phase 5: Multi-Task Tagged Execution
 

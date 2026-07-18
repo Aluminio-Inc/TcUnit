@@ -121,7 +121,7 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 
 **Symptom**: Sequential run completion never latches even though the last suite finished.
 **Cause**: TwinCAT reinitializes normal method variables on every call. The current sequential runner declares `NumberOfTestSuitesFinished` as method `VAR`, while only the suite cursor/timer are `VAR_INST`; the final-suite branch does not make the local count equal the total.
-**Solution**: Add a committed sequential regression before Phase 5, then use an explicit persistent plan cursor/state machine. State spanning scans belongs on the FB/context or in `VAR_INST`.
+**Solution**: Add a committed sequential regression before Phase 5, then use an explicit persistent plan cursor/state machine. State spanning scans belongs on the FB/context or in `VAR_INST`. **FIXED 2026-07-18 (2026.7.18.1)**: the final-suite branch publishes the full finished count so the latch fires for any suite count including 1; regressions = the step-0 REGRESSION campaign (completion-marker assertion) and the verifier `PRG_TEST_SEQUENCE` single-suite check.
 
 ### 20. A File Glob Is Not a Distributed-Run Completion Protocol
 
@@ -152,6 +152,12 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 **Symptom**: The TcUnit library instance carried Base's `GVL_System.FileHandlerCsv/Json/Xml` EtherCAT-linked input variables ("BuildTask Inputs" in the xti) after rebuilding against 2026.7.x Base.
 **Cause**: `BuildTask` (added 2026-04-09) made the build instantiate referenced-library `linkalways` globals, pulling Base's IO-mapped file-handler instances into the library's instance image. Upstream TcUnit's library project has no task — that is the correct shape.
 **Solution**: BuildTask removed (tsproj task block, plcproj TcTTO entry, file). The sln was also trimmed to x64-only configurations (fresh COM sessions default to the first configuration alphabetically, which was ARM/CE7). Note: `SaveAsLibrary` automation itself works fine on 4026.21 (`tpm library save`) — the earlier "automation regression" suspicion was actually Gotcha #22's content fault.
+
+### 25. The Trace Pipeline Is Not a Real-Time Observable — Know Its Blind Spots
+
+**Symptom**: 'TEST RUN STARTED' missing from flushed logs on fast campaigns; an honored abort's 'TEST RUN ABORTED' never appearing in any file; the central ring (`GVL_System.RingBufferLog`) reading `WriteIncrement=0` while a run is visibly executing; ring slots reading empty immediately after entries were counted.
+**Cause** (all observed 2026-07-17/18 during step-0 A1 work): (a) traces emitted in the first scans are dropped before the trace pipeline is ready; (b) entries reach the file only via the SaveEntryThreshold batch or the TESTS-FINISHED `RequestFlush` — an ABORTED run never reaches that trigger; (c) ADS STOP does not drain the ring to a file, and the restart reinitializes memory, losing pending entries; (d) the LogTask drains and clears ring slots within one of its scans, so post-hoc ADS scans of the ring race the drain and lose.
+**Solution**: For deterministic trace-content evidence either force `SAVEENTRYTHRESHOLD=1` for the campaign (the step-0 ABORT selection does this) or assert behavior via ADS state reads instead of trace text. As of TcUnit 2026.7.18.1, aborted and completed are distinct terminal outcomes: the runner emits 'TEST RUN ABORTED' when it HONORS the abort flag (raw online writes included; `AbortRunningTestSuiteTests()` now traces 'TEST RUN ABORT REQUESTED'), and 'TEST RUN COMPLETED', the ADS summary, and xUnit publication are all suppressed after an abort.
 
 ---
 
