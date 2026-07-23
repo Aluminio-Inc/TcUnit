@@ -1,6 +1,6 @@
 # Development Breadcrumbs
 
-**Last Updated**: 2026-07-16
+**Last Updated**: 2026-07-23
 
 Hard-won knowledge, gotchas, and patterns that save future agents from repeating mistakes.
 
@@ -158,6 +158,29 @@ Hard-won knowledge, gotchas, and patterns that save future agents from repeating
 **Symptom**: 'TEST RUN STARTED' missing from flushed logs on fast campaigns; an honored abort's 'TEST RUN ABORTED' never appearing in any file; the central ring (`GVL_System.RingBufferLog`) reading `WriteIncrement=0` while a run is visibly executing; ring slots reading empty immediately after entries were counted.
 **Cause** (all observed 2026-07-17/18 during step-0 A1 work): (a) traces emitted in the first scans are dropped before the trace pipeline is ready; (b) entries reach the file only via the SaveEntryThreshold batch or the TESTS-FINISHED `RequestFlush` — an ABORTED run never reaches that trigger; (c) ADS STOP does not drain the ring to a file, and the restart reinitializes memory, losing pending entries; (d) the LogTask drains and clears ring slots within one of its scans, so post-hoc ADS scans of the ring race the drain and lose.
 **Solution**: For deterministic trace-content evidence either force `SAVEENTRYTHRESHOLD=1` for the campaign (the step-0 ABORT selection does this) or assert behavior via ADS state reads instead of trace text. As of TcUnit 2026.7.18.1, aborted and completed are distinct terminal outcomes: the runner emits 'TEST RUN ABORTED' when it HONORS the abort flag (raw online writes included; `AbortRunningTestSuiteTests()` now traces 'TEST RUN ABORT REQUESTED'), and 'TEST RUN COMPLETED', the ADS summary, and xUnit publication are all suppressed after an abort.
+
+### 26. RUN_IN_SEQUENCE Permanently Skips Suites That RETURN Before Calling TEST()
+
+**Symptom**: ADS per-suite results show `tests=0` for a test suite even though the suite has multiple `TEST()` calls and the aggregate test count appears correct. The suite's test methods never execute.
+**Cause**: `RUN_IN_SEQUENCE()` advances past a suite after seeing no active tests for a scan. If a test suite uses a multi-scan harness initialization pattern that `RETURN`s from the suite body before calling any test methods (and thus before any `TEST()` calls), TcUnit sees zero active tests on those init scans, marks the suite as done, and never revisits it. The suite is permanently skipped for the remainder of the run.
+**Solution**: Never `RETURN` from the suite body before calling test methods. Instead, always call every test method on every scan (which registers them with TcUnit via `TEST()`), and put the init guard *inside* each test method *after* the `TEST()` call:
+```iec
+// Suite body — no early RETURN
+IF NOT bHarnessReady THEN
+    // init harness
+END_IF
+Test_Foo();  // always called, even during init
+
+// Inside each test method:
+METHOD Test_Foo
+    TEST('Test_Foo');
+    IF bDone_Foo THEN RETURN; END_IF
+    IF NOT bHarnessReady THEN RETURN; END_IF  // guard AFTER TEST()
+    // ... actual test logic ...
+    bDone_Foo := TRUE;
+    TEST_FINISHED();
+```
+Working suites like `FB_DispatchClaimTests` follow this pattern — they never gate the `TEST()` registration call behind an init check. Discovered 2026-07-23; affected `FB_OpSeqLifecycleTests` and `FB_CellCycleLifecycleTests` in TwinCAT_Tests (both reported `tests=0` via ADS until fixed).
 
 ---
 
