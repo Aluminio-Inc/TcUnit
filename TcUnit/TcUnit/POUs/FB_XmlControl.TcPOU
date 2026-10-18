@@ -122,13 +122,61 @@ METHOD PUBLIC NewParameter
 VAR_INPUT
     Name : T_MaxString;
     Value : T_MaxString;
+END_VAR
+VAR
+    ValueBytes : POINTER TO BYTE;
+    ChunkBytes : POINTER TO BYTE;
+    Chunk : T_MaxString;
+    ChunkLength : INT;
+    ValueLength : INT;
+    Index : INT;
+    Entity : STRING(6);
+END_VAR
+VAR CONSTANT
+    AMPERSAND_BYTE : BYTE := 16#26;
+    LESS_THAN_BYTE : BYTE := 16#3C;
+    GREATER_THAN_BYTE : BYTE := 16#3E;
+    QUOTE_BYTE : BYTE := 16#22;
+    MAX_CHUNK_LENGTH : INT := 255;
 END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[XmlBuffer.Append := SPACE;
 XmlBuffer.Append := Name;
 XmlBuffer.Append := EQUALS;
 XmlBuffer.Append := QUOTE;
-XmlBuffer.Append := Value;
+(* The value is escaped: failure messages and skip reasons may contain characters that would end the
+   attribute or start markup. Unescaped runs are appended in chunks, each entity on its own. *)
+ValueBytes := ADR(Value);
+ChunkBytes := ADR(Chunk);
+ChunkLength := 0;
+ValueLength := LEN(Value);
+FOR Index := 0 TO ValueLength - 1 DO
+    IF ValueBytes[Index] = AMPERSAND_BYTE THEN
+        Entity := '&amp;';
+    ELSIF ValueBytes[Index] = LESS_THAN_BYTE THEN
+        Entity := '&lt;';
+    ELSIF ValueBytes[Index] = GREATER_THAN_BYTE THEN
+        Entity := '&gt;';
+    ELSIF ValueBytes[Index] = QUOTE_BYTE THEN
+        Entity := '&quot;';
+    ELSE
+        Entity := '';
+        ChunkBytes[ChunkLength] := ValueBytes[Index];
+        ChunkLength := ChunkLength + 1;
+    END_IF
+    IF LEN(Entity) > 0 OR ChunkLength >= MAX_CHUNK_LENGTH THEN
+        ChunkBytes[ChunkLength] := 0;
+        XmlBuffer.Append := Chunk;
+        ChunkLength := 0;
+        IF LEN(Entity) > 0 THEN
+            XmlBuffer.Append := Entity;
+        END_IF
+    END_IF
+END_FOR
+IF ChunkLength > 0 THEN
+    ChunkBytes[ChunkLength] := 0;
+    XmlBuffer.Append := Chunk;
+END_IF
 XmlBuffer.Append := QUOTE;]]></ST>
       </Implementation>
     </Method>
