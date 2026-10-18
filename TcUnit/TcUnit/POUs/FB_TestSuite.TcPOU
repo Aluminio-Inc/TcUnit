@@ -3797,6 +3797,46 @@ FOR IteratorCounter := 1 TO NumberOfTestsToAnalyse BY 1 DO
 END_FOR]]></ST>
       </Implementation>
     </Method>
+    <Method Name="SetTestSkipped" Id="{954fb2e5-0ff8-478f-80f8-fce770dd283b}">
+      <Declaration><![CDATA[(* Ends a running test as skipped with a reason (TEST_SKIPPED). A test that already failed keeps its
+   failure and FALSE is returned; a finished test is not changed. Returns TRUE when the skip was recorded. *)
+METHOD INTERNAL SetTestSkipped : BOOL
+VAR_INPUT
+    TestName : T_MaxString;
+    Reason : T_MaxString;
+    FinishedAt : LWORD;
+END_VAR
+VAR
+    IteratorCounter : UINT;
+    NumberOfTestsToAnalyse : UINT(0..GVL_Param_TcUnit.MaxNumberOfTestsForEachTestSuite);
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[SetTestSkipped := FALSE;
+NumberOfTestsToAnalyse := GetNumberOfTestsToAnalyse();
+FOR IteratorCounter := 1 TO NumberOfTestsToAnalyse BY 1 DO
+    IF Tests[IteratorCounter].GetName() = TestName THEN
+        IF Tests[IteratorCounter].IsFinished() THEN
+            RETURN;
+        END_IF
+        IF NOT Tests[IteratorCounter].IsFailed() THEN
+            Tests[IteratorCounter].SetSkipped();
+            // The reason travels in the existing FailureMessage field; no result layout change.
+            Tests[IteratorCounter].SetAssertionMessage(AssertMessage := Reason);
+            SetTestSkipped := TRUE;
+        END_IF
+        Tests[IteratorCounter].SetFinishedAndDuration(FinishedAt := FinishedAt);
+        IF SetTestSkipped THEN
+            TraceWithSeverity(Message := CONCAT(CONCAT('TEST SKIPPED: ', TestName), CONCAT(' - ', Reason)),
+                              Severity := Global.TcEventSeverity.Warning);
+        ELSE
+            TraceWithSeverity(Message := CONCAT('TEST FAILED (skip refused after a failed assertion): ', TestName),
+                              Severity := Global.TcEventSeverity.Warning);
+        END_IF
+        RETURN;
+    END_IF
+END_FOR]]></ST>
+      </Implementation>
+    </Method>
     <Method Name="SetTestFinished" Id="{1ec94335-80d7-46d3-a0f0-345f8eda2ea4}">
       <Declaration><![CDATA[(* Marks the test as finished in this testsuite.
    Returns TRUE if test was found, and FALSE if a test with this name was not found in this testsuite *)

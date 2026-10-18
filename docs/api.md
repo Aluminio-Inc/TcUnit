@@ -7,6 +7,28 @@
 This is the application programming interface for TcUnit.
 
 - [`FB_TestSuite`](#fb_testsuite)
+- [`TEST_SKIPPED`](#test_skipped) (Photara fork)
+
+## TEST_SKIPPED
+
+`FUNCTION TEST_SKIPPED(Reason : T_MaxString) : BOOL` ends the running test as **skipped** with a
+reason, for example when a vendor service the test needs stayed unavailable after its bounded
+retries. Unlike a `disabled_` test, which is skipped at registration, the decision is made while
+the test runs.
+
+- The case result has `TestIsSkipped` TRUE, `TestIsFailed` FALSE and the reason in `FailureMessage`.
+  It counts as skipped, never as passed.
+- A test that already has a failed assertion stays failed; `TEST_SKIPPED` then returns FALSE.
+- Like `TEST_FINISHED`, it finishes the test, so later assertions in that test are ignored.
+  Return right after the call.
+
+```
+TEST('Test_SymbolCopy_ReflectionAvailable');
+IF nAttempts >= 3 AND NOT bReflectionAvailable THEN
+    TEST_SKIPPED(Reason := CONCAT('Tc3_JsonXml reflection unavailable after 3 attempts, last hr ', sLastError));
+    RETURN;
+END_IF
+```
 
 ## FB_TestSuite
 

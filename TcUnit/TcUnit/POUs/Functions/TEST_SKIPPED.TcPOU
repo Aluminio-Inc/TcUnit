@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="TEST_SKIPPED" Id="{2cd34f21-6507-4a9b-af1c-fed67f70fc7a}" SpecialFunc="None">
+    <Declaration><![CDATA[(* Ends the currently running test as SKIPPED with a reason, for example when a vendor service the test
+   needs stayed unavailable after its bounded retries. The reason is reported in the test case result's
+   FailureMessage with TestIsSkipped TRUE and TestIsFailed FALSE, and the test counts as skipped, never
+   as passed. A test that already has a failed assertion stays failed (returns FALSE). Like TEST_FINISHED,
+   it finishes the test: later assertions in the same test are ignored, so return right after calling it.
+   Returns TRUE when the skip was recorded. *)
+FUNCTION TEST_SKIPPED : BOOL
+VAR_INPUT
+    Reason : T_MaxString;
+END_VAR
+VAR
+    Counter : UINT := 0;
+    FinishedAt : LWORD;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[FinishedAt := F_GetCpuCounterAs64bit(GVL_TcUnit.GetCpuCounter);
+
+TEST_SKIPPED := FALSE;
+FOR Counter := 1 TO GVL_TcUnit.NumberOfInitializedTestSuites BY 1 DO
+    IF GVL_TcUnit.TestSuiteAddresses[Counter] = GVL_TcUnit.CurrentTestSuiteBeingCalled THEN
+        TEST_SKIPPED := GVL_TcUnit.TestSuiteAddresses[Counter]^.SetTestSkipped(TestName := GVL_TcUnit.CurrentTestNameBeingCalled,
+                                                                                Reason := Reason, FinishedAt := FinishedAt);
+        GVL_TcUnit.TestSuiteAddresses[Counter]^.CalculateAndSetNumberOfAssertsForTest(TestName := GVL_TcUnit.CurrentTestNameBeingCalled);
+        GVL_TcUnit.CurrentTestIsFinished := TRUE;
+        RETURN;
+    END_IF
+END_FOR]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

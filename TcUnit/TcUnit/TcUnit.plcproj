@@ -195,6 +195,9 @@ Documentation and examples are available at www.tcunit.org</Description>
     <Compile Include="POUs\Functions\TEST_FINISHED_NAMED.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="POUs\Functions\TEST_SKIPPED.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="POUs\Functions\TEST_ORDERED.TcPOU">
       <SubType>Code</SubType>
     </Compile>
