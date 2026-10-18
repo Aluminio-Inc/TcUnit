@@ -158,6 +158,11 @@ IF PublishTrigger.Q THEN
                    child element, not a custom status attribute (kept for
                    backward compatibility) *)
                 Xml.NewTag('skipped');
+                // A run-time skip (TEST_SKIPPED) carries its reason in FailureMessage; JUnit's
+                // <skipped message="..."/> keeps it visible to xUnit consumers.
+                IF LEN(STR := UnitTestResults.TestSuiteResults[CurrentSuiteNumber].TestCaseResults[CurrentTestCount].FailureMessage) > 0 THEN
+                    Xml.NewParameter('message', UnitTestResults.TestSuiteResults[CurrentSuiteNumber].TestCaseResults[CurrentTestCount].FailureMessage);
+                END_IF
                 Xml.CloseTag();
             ELSE
             // In case of success
