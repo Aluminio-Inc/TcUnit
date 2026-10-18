@@ -113,10 +113,28 @@ TEST_FINISHED();]]></ST>
       <Declaration><![CDATA[METHOD PRIVATE Test_NewParameter
 VAR
     XmlControl : FB_XmlControl;
+    XmlEscaped : FB_XmlControl;
+    XmlEmpty : FB_XmlControl;
+    XmlAdjacent : FB_XmlControl;
+    XmlFull : FB_XmlControl;
+    XmlLongEscaped : FB_XmlControl;
     ParameterName : STRING := 'ParaName';
     ParameterValue : STRING := 'Value';
     ExpectedBuffer : STRING := ' ParaName="Value"';
     ActualBuffer : STRING;
+    LongValue : T_MaxString;
+    ValueBytes : POINTER TO BYTE;
+    BufferBytes : POINTER TO BYTE;
+    Index : INT;
+    Length : INT;
+END_VAR
+VAR CONSTANT
+    MAX_SCAN : INT := 1999;
+    FULL_VALUE_LENGTH : INT := 255;
+    LONG_ESCAPED_COUNT : INT := 60;
+    LETTER_A : BYTE := 16#61;
+    AMPERSAND : BYTE := 16#26;
+    QUOTE_BYTE : BYTE := 16#22;
 END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[TEST('Test_NewParameter');
@@ -130,6 +148,65 @@ MEMCPY(ADR(ActualBuffer), ADR(Buffer), SIZEOF(ActualBuffer));
 AssertEquals_String(Expected := ExpectedBuffer,
                     Actual :=  ActualBuffer,
                     Message := 'Buffer does not contain expected content');
+
+(* Attribute values are escaped (failure messages and TEST_SKIPPED reasons; Codex step-1 re-review R10).
+   The cases below are part of this test so the suite keeps its method set; native RED/GREEN is T-6. *)
+Setup();
+XmlEscaped.SetBuffer(ADR(Buffer), SIZEOF(Buffer));
+XmlEscaped.NewParameter('P', 'a"b&c<d>e');
+MEMCPY(ADR(ActualBuffer), ADR(Buffer), SIZEOF(ActualBuffer));
+AssertEquals_String(Expected := ' P="a&quot;b&amp;c&lt;d&gt;e"', Actual := ActualBuffer,
+                    Message := 'Quote, ampersand and angle brackets are not escaped');
+
+Setup();
+XmlEmpty.SetBuffer(ADR(Buffer), SIZEOF(Buffer));
+XmlEmpty.NewParameter('P', '');
+MEMCPY(ADR(ActualBuffer), ADR(Buffer), SIZEOF(ActualBuffer));
+AssertEquals_String(Expected := ' P=""', Actual := ActualBuffer, Message := 'Empty value is not an empty attribute');
+
+Setup();
+XmlAdjacent.SetBuffer(ADR(Buffer), SIZEOF(Buffer));
+XmlAdjacent.NewParameter('P', '&&<<');
+MEMCPY(ADR(ActualBuffer), ADR(Buffer), SIZEOF(ActualBuffer));
+AssertEquals_String(Expected := ' P="&amp;&amp;&lt;&lt;"', Actual := ActualBuffer, Message := 'Adjacent entities are not escaped');
+
+// A full 255-character value is kept whole: ' P="' + 255 + '"' = 260 bytes.
+Setup();
+ValueBytes := ADR(LongValue);
+FOR Index := 0 TO FULL_VALUE_LENGTH - 1 DO
+    ValueBytes[Index] := LETTER_A;
+END_FOR
+ValueBytes[FULL_VALUE_LENGTH] := 0;
+XmlFull.SetBuffer(ADR(Buffer), SIZEOF(Buffer));
+XmlFull.NewParameter('P', LongValue);
+BufferBytes := ADR(Buffer);
+Length := 0;
+FOR Index := 0 TO MAX_SCAN DO
+    IF BufferBytes[Index] = 0 THEN
+        EXIT;
+    END_IF
+    Length := Length + 1;
+END_FOR
+AssertEquals_INT(Expected := 4 + FULL_VALUE_LENGTH + 1, Actual := Length, Message := 'A 255-character value is truncated');
+AssertEquals_BYTE(Expected := QUOTE_BYTE, Actual := BufferBytes[Length - 1], Message := 'A 255-character value is not closed');
+
+// Escaped output longer than 255 characters: 60 ampersands become 300 bytes of entities.
+Setup();
+FOR Index := 0 TO LONG_ESCAPED_COUNT - 1 DO
+    ValueBytes[Index] := AMPERSAND;
+END_FOR
+ValueBytes[LONG_ESCAPED_COUNT] := 0;
+XmlLongEscaped.SetBuffer(ADR(Buffer), SIZEOF(Buffer));
+XmlLongEscaped.NewParameter('P', LongValue);
+Length := 0;
+FOR Index := 0 TO MAX_SCAN DO
+    IF BufferBytes[Index] = 0 THEN
+        EXIT;
+    END_IF
+    Length := Length + 1;
+END_FOR
+AssertEquals_INT(Expected := 4 + 5 * LONG_ESCAPED_COUNT + 1, Actual := Length, Message := 'Escaped output over 255 characters is truncated');
+AssertEquals_BYTE(Expected := QUOTE_BYTE, Actual := BufferBytes[Length - 1], Message := 'Long escaped value is not closed');
 
 TEST_FINISHED();]]></ST>
       </Implementation>
