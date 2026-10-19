@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-16_
+_Last updated: 2026-10-18_
 
 ---
 
@@ -11,6 +11,8 @@ TcUnit is an open-source unit testing framework for TwinCAT 3 (IEC 61131-3 Struc
 ---
 
 ## Current State Summary
+
+**Release 2026.10.18.1** (2026-10-18, Photara Base remediation T-6 / TOOL-SKIP, decision D-23): `TEST_SKIPPED(Reason)` (a run-time skip with a reason; a failed test stays failed; a finished test is not changed), the reason on xUnit `<skipped message>`, escaped xUnit attribute values, Base's event class tracked as `TcUnit/TcUnit/ExternalTypes.tmc` (D-34; the Base 2026.6.22.1 dependency predates Base's own fix) and the PLC instance in its own instance XTI, so the library builds from a git archive with tpm. Proven on hardware: the Tests `tcunit-skip` campaign RED (before library 2026.10.18.1003) and GREEN (candidate 2026.10.18.1004) on 192.168.225.5, and the verifier battery RED 122 failed (.6) and GREEN 121 failed (.7), differing by exactly `Test_NewParameter`. Record: TwinCAT_Base `docs/validation/t6-20261018/README.md`.
 
 7 FBs extended with FB_BaseStatic, centralized assert failure tracing in LogAssertFailure, test lifecycle and run lifecycle tracing, Phases 1-3 complete. **Phase 4a/4b and the Phase 5 Step-0 prerequisites are COMPLETE** (2026-07-18, candidate `2026.7.18.1`, tag pending release approval): timed-suite hardening (cycle-guarded wait context, trimmed result lookup, one-shot misuse traces), the `RUN_IN_SEQUENCE` completion latch, corrected xUnit/JUnit count semantics with UDINT aggregates and `<skipped/>` elements, and distinct abort/completed terminal outcomes — all proven red-green on hardware (192.168.225.2.1.1) with committed campaigns, canonical goldens, an automated abort probe, and the full verifier battery at its expected 121 failures. Evidence: `docs/verification/2026-07-17-step0-verification.md`. Phase 5 multi-task tagged execution (ADR-004/ADR-005, spec Revision 3) is next: the compile/ABI spike.
 
