@@ -10,6 +10,9 @@
 *.compileinfo
 *.tmc
 *.tmcRefac
+# Required event-class export (Base PhotaraEventClass for the Base dependency); the general *.tmc rule
+# covers build outputs (decision D-34, 2026-10-18).
+!/TcUnit/TcUnit/ExternalTypes.tmc
 #*.library
 *.project.~u
 *.tsproj.bak

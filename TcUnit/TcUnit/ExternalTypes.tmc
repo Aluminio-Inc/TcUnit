@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcModuleClass GeneratedBy="TwinCAT XAE Plc">
+  <DataTypes>
+    <DataType>
+      <Name GUID="{1749ECC0-3206-49FC-A037-956A22776039}">PhotaraEventClass</Name>
+      <DisplayName TxtId=""><![CDATA[PhotaraEventClass]]></DisplayName>
+      <EventId>
+        <Name Id="1">Info</Name>
+        <DisplayName TxtId=""><![CDATA[{0} | {1} | {2} | {3}]]></DisplayName>
+        <Severity>Info</Severity>
+        <Comment TxtId=""><![CDATA[Arguments:
+0 - Textual message
+1 - DC Timestamp
+2 - Instance (FB name)
+3 - Context (Calling task)
+4 - ScanCount
+5 - Flags]]></Comment>
+      </EventId>
+      <EventId>
+        <Name Id="2">Warning</Name>
+        <DisplayName TxtId=""><![CDATA[{0} | {1} | {2} | {3}]]></DisplayName>
+        <Severity>Warning</Severity>
+        <Comment TxtId=""><![CDATA[Arguments:
+0 - Textual message
+1 - DC Timestamp
+2 - Instance (FB name)
+3 - Context (Calling task)
+4 - ScanCount
+5 - Flags]]></Comment>
+      </EventId>
+      <EventId>
+        <Name Id="3">Error</Name>
+        <DisplayName TxtId=""><![CDATA[{0} | {1} | {2} | {3}]]></DisplayName>
+        <Severity>Error</Severity>
+        <Comment TxtId=""><![CDATA[Arguments:
+0 - Textual message
+1 - DC Timestamp
+2 - Instance (FB name)
+3 - Context (Calling task)
+4 - ScanCount
+5 - Flags]]></Comment>
+      </EventId>
+      <EventId>
+        <Name Id="4">CriticalMessage</Name>
+        <DisplayName TxtId=""><![CDATA[{0} | {1} | {2} | {3}]]></DisplayName>
+        <Severity>Critical</Severity>
+        <Comment TxtId=""><![CDATA[Arguments:
+0 - Textual message
+1 - DC Timestamp
+2 - Instance (FB name)
+3 - Context (Calling task)
+4 - ScanCount
+5 - Flags]]></Comment>
+      </EventId>
+      <EventId>
+        <Name Id="5">AlarmRaised</Name>
+        <DisplayName TxtId=""><![CDATA[{0} | {1} | {2} | {3}]]></DisplayName>
+        <Severity>Critical</Severity>
+        <Comment TxtId=""><![CDATA[Arguments:
+0 - Textual message
+1 - DC Timestamp
+2 - Instance (FB name)
+3 - Context (Calling task)
+4 - ScanCount
+5 - Flags]]></Comment>
+      </EventId>
+      <EventId>
+        <Name Id="0">Verbose</Name>
+        <DisplayName TxtId=""><![CDATA[{0} | {1} | {2} | {3}]]></DisplayName>
+        <Severity>Verbose</Severity>
+        <Comment TxtId=""><![CDATA[Arguments:
+0 - Textual message
+1 - DC Timestamp
+2 - Instance (FB name)
+3 - Context (Calling task)
+4 - ScanCount
+5 - Flags]]></Comment>
+      </EventId>
+      <Hides>
+        <Hide GUID="{B38BCBF8-F667-45EE-A2C6-9E670AC96820}" />
+        <Hide GUID="{F7F9665F-8609-4854-A6CE-3D282EFA17F3}" />
+        <Hide GUID="{D84DA73D-2ED9-4A02-A80F-12B23F9E05DE}" />
+        <Hide GUID="{AF633F80-D496-445A-B167-3A2DEA5A3176}" />
+        <Hide GUID="{4AB87E62-2DF5-45CE-95C9-980D219B4BE2}" />
+        <Hide GUID="{7D546786-9A2C-4404-9EF5-7B818F67E2C7}" />
+        <Hide GUID="{78F386B3-B1C7-409D-B3F8-F9781042C569}" />
+        <Hide GUID="{150DA168-D851-4573-89F0-0B0881991E43}" />
+      </Hides>
+    </DataType>
+  </DataTypes>
+</TcModuleClass>

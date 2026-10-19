@@ -313,6 +313,11 @@ Documentation and examples are available at www.tcunit.org</Description>
       <Resolution>Base, 2026.6.22.1 (Photara)</Resolution>
     </PlaceholderResolution>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="ExternalTypes.tmc">
+      <SubType>Content</SubType>
+    </None>
+  </ItemGroup>
   <ProjectExtensions>
     <PlcProjectOptions>
       <XmlArchive>
