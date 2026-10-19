@@ -50,7 +50,7 @@
 		</DataType>
 	</DataTypes>
 	<Project GUID="{59ED27DD-D865-40E3-AB9D-3C7E47AFCF7D}" Name="TcUnitVerifier" PrjFilePath="..\..\TcUnitVerifier\TcUnitVerifier.plcproj" TmcFilePath="..\..\TcUnitVerifier\TcUnitVerifier.tmc" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true">
-		<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcHash="{EA8AEF58-2A84-CFCC-F10E-7291A5B380CF}" TmcPath="TcUnitVerifier\TcUnitVerifier.tmc">
+		<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcHash="{EA8AEF58-2A84-CFCC-F10E-7291A5B380CF}">
 			<Name>TcUnitVerifier Instance</Name>
 			<CLSID ClassFactory="TcPlc30">{08500001-0000-0000-F000-000000000064}</CLSID>
 			<Vars VarGrpType="1">
