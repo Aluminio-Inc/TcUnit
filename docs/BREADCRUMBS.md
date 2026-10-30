@@ -1,6 +1,6 @@
 # Development Breadcrumbs
 
-**Last Updated**: 2026-07-23
+**Last Updated**: 2026-10-30
 
 Hard-won knowledge, gotchas, and patterns that save future agents from repeating mistakes.
 
@@ -181,6 +181,20 @@ METHOD Test_Foo
     TEST_FINISHED();
 ```
 Working suites like `FB_DispatchClaimTests` follow this pattern — they never gate the `TEST()` registration call behind an init check. Discovered 2026-07-23; affected `FB_OpSeqLifecycleTests` and `FB_CellCycleLifecycleTests` in TwinCAT_Tests (both reported `tests=0` via ADS until fixed).
+
+### 27. Large Test Images Can Fail to Start on a Slow Target: Mark Suite Instances `TcNoSymbol`
+
+**Symptom**: A TwinCAT_Tests image with many suites never reaches RUN on a slow bench. About 7 s into the restart the target logs TcSysSrv event 23 `Init28\IO: Download Symbols ... AdsError: 1861 (timeout elapsed) << failed` and falls back to CONFIG, with no crash dump and a valid license. ToolPackageManager reports `SupervisorTimeout at 'runtime-started-probe'`. The failed restart also empties the target's `StaticRoutes.xml` (re-persist the return route before retrying).
+**Cause**: The ADS symbol export of the image. Every suite instance exports its whole fixture tree (mocks, harness structs) as ADS symbols, and the `Download Symbols` init command could not finish inside its timeout on 192.168.225.5 (CP-88F8DF, 2 cores at 1.6 GHz). Proven 2026-10-29: a 153-case image (Motion banks 16/3/4) failed three times in a row; the same image with suite symbols suppressed started on the first attempt. The exact limit is not established (an image that was larger on some header fields still started); see TwinCAT_Tests `docs/ADS_SYMBOL_DOWNLOAD_START_FAILURE_2026-10-30.md` for the header fields.
+**Solution**: Declare the suite instances in the runner with `{attribute 'TcNoSymbol'}` (TwinCAT_Tests `docs/prepare_motion_bank.py --suppress-suite-symbols` does this):
+```iec
+PROGRAM PRG_TEST_RUNNER
+VAR
+    {attribute 'TcNoSymbol'}
+    fbSomeSuite : FB_SomeSuite;
+END_VAR
+```
+TcUnit is unaffected: each suite registers itself in `FB_init` (`GVL_TcUnit.TestSuiteAddresses[...] := THIS`) and takes its name from the inherited `instance-path` attribute, not from ADS symbols, and the runner's own result tree (`GVL_TcUnit.TcUnitRunner.TestResults`, read by `Read-TcUnitResults.ps1`) stays exported, including every suite and case name. Runner fields (identity markers) also stay readable. What is lost is online access to suite internals; use an unsuppressed image on a faster bench for that.
 
 ---
 
